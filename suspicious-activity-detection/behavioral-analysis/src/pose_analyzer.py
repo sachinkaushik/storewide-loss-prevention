@@ -124,12 +124,18 @@ class PoseAnalyzer:
         confidence_threshold: float = 0.5,
         vlm_client: Optional[VLMClient] = None,
         pattern_config: Optional[dict[str, Any]] = None,
+        vlm_confidence_threshold: float = 0.5,
     ):
         self.min_frames = min_frames
         self.confidence_threshold = confidence_threshold
         self.vlm_client = vlm_client
         self.pattern_config = pattern_config or {}
-        logger.info("PoseAnalyzer initialized (pattern detection + VLM confirmation)")
+        self.vlm_confidence_threshold = vlm_confidence_threshold
+        logger.info(
+            "PoseAnalyzer initialized (pattern detection + VLM confirmation, "
+            "vlm_confidence_threshold=%.2f)",
+            self.vlm_confidence_threshold,
+        )
 
     def is_loaded(self) -> bool:
         """Check if analyzer is ready."""
@@ -257,26 +263,40 @@ class PoseAnalyzer:
         vlm_confidence = parsed.get("confidence", 0.0) if parsed else 0.0
         vlm_reasoning = parsed.get("reasoning", "") if parsed else ""
 
-        pose_result.vlm_confirmed = vlm_suspicious
-
         if vlm_suspicious:
-            # Combine pose and VLM confidence
+            # VLM confirms — combine pose and VLM confidence
+            pose_result.vlm_confirmed = True
             combined = (pose_result.confidence + vlm_confidence) / 2
             pose_result.confidence = combined
             pose_result.description = (
                 f"{pose_result.description} | VLM confirms: {vlm_reasoning}"
             )
-        else:
-            # VLM disagrees — lower confidence but keep match
+        elif vlm_confidence >= self.vlm_confidence_threshold:
+            # VLM strongly disagrees (confidence above threshold) — trust VLM
+            pose_result.vlm_confirmed = False
             pose_result.confidence = pose_result.confidence * 0.5
             pose_result.description = (
                 f"{pose_result.description} | VLM disagrees: {vlm_reasoning}"
             )
+        else:
+            # VLM disagreement is below confidence threshold — inconclusive,
+            # trust the pose match.
+            pose_result.vlm_confirmed = True
+            pose_result.description = (
+                f"{pose_result.description} | VLM low-confidence "
+                f"({vlm_confidence:.2f} < {self.vlm_confidence_threshold:.2f}): "
+                f"{vlm_reasoning}"
+            )
 
         logger.info(
-            f"VLM confirmation: suspicious={vlm_suspicious}, "
-            f"vlm_confidence={vlm_confidence:.2f}, "
-            f"combined_confidence={pose_result.confidence:.3f}"
+            "VLM confirmation: suspicious=%s, vlm_confidence=%.2f, "
+            "vlm_confidence_threshold=%.2f, vlm_confirmed=%s, "
+            "combined_confidence=%.3f",
+            vlm_suspicious,
+            vlm_confidence,
+            self.vlm_confidence_threshold,
+            pose_result.vlm_confirmed,
+            pose_result.confidence,
         )
 
         return pose_result

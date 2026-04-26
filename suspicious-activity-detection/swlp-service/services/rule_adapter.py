@@ -293,6 +293,13 @@ class RuleEngineAdapter:
                 "dwell_seconds": round(event.dwell_seconds, 1) if event.dwell_seconds else 0,
                 "threshold": params.get("threshold", 120),
             }
+        elif alert_type == AlertType.CONCEALMENT:
+            return {
+                "status": getattr(session, "last_ba_status", None),
+                "confidence": round(getattr(session, "last_ba_confidence", 0.0) or 0.0, 3),
+                "vlm_response": getattr(session, "last_ba_vlm_response", None),
+                "frames_analyzed": getattr(session, "last_ba_frames_analyzed", 0) or 0,
+            }
         return {}
 
     # ---- Deferred frame cleanup on HIGH_VALUE zone exit ----------------------
@@ -472,6 +479,9 @@ class RuleEngineAdapter:
         session.concealment_count[region_id] = session.concealment_count.get(region_id, 0) + 1
         session.last_ba_confidence = float(result.get("confidence", 0.0))
         session.last_ba_frames_analyzed = int(result.get("frames_analyzed", 0))
+        session.last_ba_vlm_response = result.get("vlm_response")
+        session.last_ba_entry_timestamp = result.get("entry_timestamp")
+        session.last_ba_status = status
 
         logger.warning(
             "BA: concealment detected — feeding rule engine",

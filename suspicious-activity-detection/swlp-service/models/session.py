@@ -82,6 +82,9 @@ class PersonSession:
     # Last BA result fields (set on each ba/results message)
     last_ba_confidence: float = 0.0
     last_ba_frames_analyzed: int = 0
+    last_ba_vlm_response: Optional[str] = None
+    last_ba_entry_timestamp: Optional[str] = None
+    last_ba_status: Optional[str] = None
 
     # Frame references (SeaweedFS keys for rolling buffer — cropped person frames)
     frame_buffer: List[str] = field(default_factory=list)

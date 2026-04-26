@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     vlm_max_tokens: int = 500
     vlm_temperature: float = 0.1
     vlm_max_image_size: int = 512
+    # Minimum VLM confidence required to override a pose-based match.
+    # If VLM reports suspicious=False but its confidence is below this
+    # threshold, the disagreement is treated as inconclusive and the
+    # pose match is trusted (concealment alert fires).
+    vlm_confidence_threshold: float = 0.5
 
     # Pattern config file path
     pattern_config_path: str = "/app/config/patterns.yaml"

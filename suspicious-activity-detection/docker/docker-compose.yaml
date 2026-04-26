@@ -126,6 +126,7 @@ services:
       VLM_ENDPOINT: http://ovms-vlm:8001
       VLM_MODEL_NAME: ${VLM_MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}
       VLM_ENABLED: ${VLM_ENABLED:-true}
+      VLM_CONFIDENCE_THRESHOLD: ${VLM_CONFIDENCE_THRESHOLD:-0.5}
       MQTT_HOST: ${MQTT_HOST:-broker.scenescape.intel.com}
       MQTT_PORT: ${MQTT_PORT:-1883}
       BA_REQUEST_TOPIC: ${BA_REQUEST_TOPIC:-ba/requests}
