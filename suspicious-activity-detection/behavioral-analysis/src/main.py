@@ -58,7 +58,6 @@ async def lifespan(app: FastAPI):
         confidence_threshold=settings.pose_confidence_threshold,
         vlm_client=vlm_client,
         pattern_config=pattern_config,
-        vlm_confidence_threshold=settings.vlm_confidence_threshold,
     )
     app.state.frame_store = SeaweedFSClient(
         endpoint=settings.seaweedfs_endpoint,
