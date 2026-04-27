@@ -30,6 +30,14 @@ class ConfigService:
         self._app_cfg = self._load_json("app_config.json")
         self._zone_cfg = self._load_json("zone_config.json")
         self._rules_settings = self._load_rules_settings()
+        # Session schema (lifecycle + extras + reset hooks). Optional file.
+        from models.session_schema import SessionSchema
+        from models.session import PersonSession
+        self._session_schema = SessionSchema.load(self._config_dir / "session.yaml")
+        # Validate that core_fields in session.yaml mirror the dataclass.
+        # Logs a warning (not an error) so YAML can lag the dataclass briefly
+        # during development without blocking startup.
+        self._session_schema.validate_against_dataclass(PersonSession)
 
         # Stream density: number of scene copies to run
         self._stream_density = int(self._zone_cfg.get("stream_density", 1))
@@ -218,6 +226,14 @@ class ConfigService:
 
     def get_rules_yaml_path(self) -> Path:
         return self._config_dir / "rules.yaml"
+
+    # ---- session schema ----
+    def get_session_schema(self):
+        """Return the loaded SessionSchema (configs/session.yaml)."""
+        return self._session_schema
+
+    def get_session_yaml_path(self) -> Path:
+        return self._config_dir / "session.yaml"
 
     # ---- zones (dynamic) ----
     def get_zones(self) -> Dict[str, dict]:

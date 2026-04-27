@@ -46,10 +46,16 @@ class RuleEngineAdapter:
         self._frame_mgr = frame_manager
         self._ba_publisher = ba_publisher
         self._frame_capture = frame_capture
+        self._schema = config.get_session_schema()
 
         rules_cfg = config.get_rules_config()
         self.ba_poll_interval = rules_cfg.get("ba_poll_interval_seconds", 1)
-        self._loiter_threshold = float(rules_cfg.get("loiter_threshold_seconds", 20))
+        # Schema lifecycle wins; rules.yaml is fallback.
+        self._loiter_threshold = float(
+            self._schema.loiter_threshold_seconds
+            if self._schema is not None
+            else rules_cfg.get("loiter_threshold_seconds", 20)
+        )
         self._pending_cleanups: set[str] = set()  # track scheduled cleanups by "{object_id}:{region_id}"
 
         # Load service definitions for escalation actions (mqtt_topic + payload templates)
@@ -94,6 +100,10 @@ class RuleEngineAdapter:
                 session.visited_exit = True
 
         elif event.event_type == EventType.EXITED:
+            # Apply schema-driven resets (zone-scoped) before frame cleanup.
+            if self._schema is not None:
+                self._schema.apply_reset(session, "zone_exit", region_id=event.region_id)
+
             if event.zone_type == ZoneType.HIGH_VALUE:
                 # Stop frame capture for this person+zone
                 if self._frame_capture:
@@ -175,7 +185,7 @@ class RuleEngineAdapter:
             if v.region_id == event.region_id
         ]
 
-        return {
+        ctx = {
             # Event fields
             "region_id": event.region_id,
             "region_name": event.region_name,
@@ -196,6 +206,13 @@ class RuleEngineAdapter:
             "ba_confidence": session.last_ba_confidence,
             "ba_frames_analyzed": session.last_ba_frames_analyzed,
         }
+
+        # Schema-driven extras: splat session.extra into context, then
+        # filter by expose_to_rules (include/exclude).
+        if self._schema is not None:
+            self._schema.merge_extras_into_context(session, ctx)
+            ctx = self._schema.filter_context(ctx)
+        return ctx
 
     # ---- action execution (LP-specific) --------------------------------------
 

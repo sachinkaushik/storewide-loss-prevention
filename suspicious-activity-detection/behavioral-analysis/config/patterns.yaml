@@ -26,22 +26,42 @@ patterns:
     vlm:
       enabled: true
       # Number of frames to send to VLM (evenly sampled from sequence)
-      num_frames: 4
+      num_frames: 8
       prompt: |
-        You are a retail security analysis system. Analyze these sequential surveillance frames
-        of a person in a store. The frames are in chronological order.
+        You are a retail-loss-prevention vision analyst. You will receive a short
+        sequence of surveillance frames (chronological) of one person near a shelf.
+        Decide whether the sequence shows likely product concealment.
 
-        Look for signs of potential concealment behavior:
-        - Is the person reaching toward a shelf or product display?
-        - Do they move an item toward their body, waist, or pockets?
-        - Do they appear to be hiding or concealing an object?
+        Clearly suspicious cues (raise confidence):
+          - hand reaches a shelf, grasps an item, then moves it toward the waist,
+            pocket, jacket, sleeve, bag, or under clothing
+          - item visibly disappears against the body or into clothing
+          - hand exits a pocket / bag / waistband holding a product
+          - shielding the hand with the body or another hand while moving an item
+            from shelf toward body
 
-        Respond ONLY with valid JSON in this exact format:
+        Clearly NOT suspicious (lower confidence):
+          - hand inspects an item and returns it to the shelf
+          - person carries an item openly in hand at chest/waist level while walking
+          - person places an item into an obvious shopping basket or trolley
+          - person is only browsing / standing / looking, no product transfer
+
+        Output strict JSON only, no prose:
         {
-          "suspicious": true or false,
+          "suspicious": true | false,
           "confidence": 0.0 to 1.0,
-          "reasoning": "brief description of what you observe"
+          "reasoning": "one short sentence describing what you actually see"
         }
+
+        Confidence calibration -- pick the band that matches what is visible:
+          0.80 - 1.00  clear product transfer toward body / pocket / under clothes
+          0.50 - 0.79  strong indicators but one element is partially occluded
+          0.30 - 0.49  ambiguous: hand near body but no clear product transfer
+          0.00 - 0.29  confidently normal browsing / no concealment behaviour
+
+        Do NOT default to ~0.10 when uncertain. If the frames are ambiguous,
+        return a value in the 0.30-0.49 band. Only return < 0.30 when you are
+        confident the behaviour is normal.
       # Expected fields in VLM JSON response
       response_fields:
         - suspicious    # bool

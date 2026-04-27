@@ -134,7 +134,7 @@ class VLMClient:
             data = response.json()
             raw_text = data["choices"][0]["message"]["content"]
 
-            logger.debug(f"VLM raw response: {raw_text}")
+            logger.info(f"VLM raw response: {raw_text!r}")
 
             # Try to parse as JSON
             parsed = self._parse_json_response(raw_text)

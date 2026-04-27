@@ -276,7 +276,8 @@ class PoseAnalyzer:
         logger.info(
             f"VLM confirmation: suspicious={vlm_suspicious}, "
             f"vlm_confidence={vlm_confidence:.2f}, "
-            f"combined_confidence={pose_result.confidence:.3f}"
+            f"combined_confidence={pose_result.confidence:.3f} "
+            f"| reasoning: {vlm_reasoning!r}"
         )
 
         return pose_result

@@ -4,7 +4,7 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 
 @dataclass
@@ -89,6 +89,12 @@ class PersonSession:
     # Frame references (SeaweedFS keys for rolling buffer — cropped person frames)
     frame_buffer: List[str] = field(default_factory=list)
     max_frame_buffer: int = 20  # ~10s at 2fps per spec
+
+    # Schema-driven extension slot. Populated from configs/session.yaml's
+    # extra_fields: list at session creation. Use this for experimental or
+    # tenant-specific state that does not yet warrant a first-class field.
+    # Visible to the rule engine (subject to expose_to_rules in session.yaml).
+    extra: Dict[str, Any] = field(default_factory=dict)
 
     def get_open_visits(self) -> List[RegionVisit]:
         """Return region visits that have not been closed."""

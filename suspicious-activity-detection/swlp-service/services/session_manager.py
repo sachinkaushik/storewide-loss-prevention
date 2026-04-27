@@ -37,8 +37,23 @@ class SessionManager:
     def __init__(self, config: ConfigService) -> None:
         self.config = config
         rules = config.get_rules_config()
-        self.session_timeout = rules.get("session_timeout_seconds", 30)
-        self._loiter_threshold = float(rules.get("loiter_threshold_seconds", 20))
+
+        # Session schema (configs/session.yaml) wins over rules.yaml settings
+        # for lifecycle knobs. Falls back to rules.yaml, then hard defaults.
+        self._schema = config.get_session_schema()
+        self.session_timeout = float(
+            self._schema.timeout_seconds
+            if self._schema is not None
+            else rules.get("session_timeout_seconds", 30)
+        )
+        self._loiter_threshold = float(
+            self._schema.loiter_threshold_seconds
+            if self._schema is not None
+            else rules.get("loiter_threshold_seconds", 20)
+        )
+        self._max_concurrent = (
+            self._schema.max_concurrent_sessions if self._schema else 5000
+        )
 
         # Build set of configured camera names for filtering
         self._allowed_cameras = {c["name"] for c in config.get_cameras()} if config.get_cameras() else set()
@@ -55,6 +70,15 @@ class SessionManager:
     def register_event_handler(self, handler: Callable) -> None:
         """Register an async handler that receives RegionEvent objects."""
         self._event_handlers.append(handler)
+
+    # ---- schema-driven session bootstrap ------------------------------------
+    def _init_session_from_schema(self, session: PersonSession) -> None:
+        """Apply session.yaml extras + frame-buffer size to a fresh session."""
+        if self._schema is None:
+            return
+        self._schema.init_extras(session)
+        if hasattr(session, "max_frame_buffer"):
+            session.max_frame_buffer = self._schema.frame_buffer_size
 
     # ---- public accessors ---------------------------------------------------
     def get_session(self, object_id: str, scene_id: str = "") -> Optional[PersonSession]:
@@ -116,6 +140,12 @@ class SessionManager:
                     if cam not in session.camera_history:
                         session.camera_history.append(cam)
             else:
+                if len(self._sessions) >= self._max_concurrent:
+                    logger.warning(
+                        "max_concurrent_sessions reached, dropping new session",
+                        object_id=oid, scene_id=scene_id, cap=self._max_concurrent,
+                    )
+                    continue
                 session = PersonSession(
                     object_id=oid,
                     first_seen=now,
@@ -124,6 +154,7 @@ class SessionManager:
                     current_cameras=list(cameras),
                     bbox=bbox,
                 )
+                self._init_session_from_schema(session)
                 self._sessions[skey] = session
                 logger.info("Session created", object_id=oid, scene_id=scene_id)
 
@@ -211,6 +242,12 @@ class SessionManager:
                     except (ValueError, TypeError):
                         first_seen = now
                 cameras = obj.get("visibility", [])
+                if len(self._sessions) >= self._max_concurrent:
+                    logger.warning(
+                        "max_concurrent_sessions reached, dropping new session",
+                        object_id=oid, region_id=region_id, cap=self._max_concurrent,
+                    )
+                    continue
                 session = PersonSession(
                     object_id=oid,
                     first_seen=first_seen,
@@ -219,6 +256,7 @@ class SessionManager:
                     current_cameras=list(cameras),
                     bbox=obj.get("center_of_mass"),
                 )
+                self._init_session_from_schema(session)
                 self._sessions[skey] = session
                 logger.info("Session created from region event", object_id=oid, region_id=region_id)
             else:

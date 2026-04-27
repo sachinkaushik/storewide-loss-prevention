@@ -1,0 +1,124 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Session management configuration.
+#
+# Three layers, by stability:
+#   1. core_fields    — universal identity + lifecycle (NEVER changes per
+#                       use case). Same for loss prevention, kitchen safety,
+#                       retail analytics, healthcare monitoring, etc.
+#   2. use_case_fields — domain state for the CURRENT deployment. Today this
+#                       is "loss_prevention". For a kitchen-safety
+#                       deployment you would swap this whole block.
+#   3. extra_fields   — experimental / tenant-specific knobs added without
+#                       touching code or the dataclass.
+#
+# Both core_fields and use_case_fields must mirror the PersonSession
+# dataclass in models/session.py. The schema loader cross-checks at
+# startup and logs warnings on drift.
+
+session:
+
+  # ── Active use case ─────────────────────────────────────────────────────
+  # Identifier of the deployment domain. Selects which use_case_fields
+  # block is active when multiple are defined.
+  use_case: loss_prevention
+
+  # ── Lifecycle ───────────────────────────────────────────────────────────
+  # Universal session lifecycle knobs. Override settings: in rules.yaml.
+  lifecycle:
+    timeout_seconds: 90              # idle gap → PERSON_LOST
+    loiter_threshold_seconds: 20     # Rule 3: dwell threshold for LOITER (spec default 120; tuned 20 for demo)
+    repeated_visit_threshold: 4      # Rule 4: visit count for REPEATED_VISIT (spec default 3; tuned 4)
+    max_concurrent_sessions: 5000    # safety cap; new sessions dropped above this
+    frame_buffer_size: 20            # rolling SeaweedFS frame keys per person
+
+  # ── Core fields (universal — sourced from SceneScape MQTT) ─────────────
+  # Identity + lifecycle + position state populated directly from
+  # SceneScape's scene-data and region-event feeds. Present for every
+  # tracked person regardless of deployment domain.
+  #
+  # Adding/removing a core field is a breaking change to the platform.
+  core_fields:
+    # Identity / lifecycle
+    - { name: object_id,       type: str,      required: true,  description: "SceneScape persistent person ID" }
+    - { name: scene_id,        type: str,      default: "",     description: "SceneScape scene UUID this person belongs to" }
+    - { name: first_seen,      type: datetime, required: true,  description: "Session creation timestamp" }
+    - { name: last_seen,       type: datetime, required: true,  description: "Last activity timestamp (drives expiry)" }
+
+    # Position (from scene-data MQTT)
+    - { name: current_cameras, type: list,     default: [],     description: "Cameras currently seeing this person" }
+    - { name: bbox,            type: dict,     default: null,   description: "Primary-camera bounding box {x,y,w,h}" }
+
+    # Zone state (from region-event MQTT)
+    - { name: current_zones,   type: dict,     default: {},     description: "{region_id: entry_timestamp_iso} for occupied zones" }
+
+  # ── Use-case fields ─────────────────────────────────────────────────────
+  # State required by the active use_case's rules. For loss_prevention
+  # this is the minimum needed to evaluate the 5 supported activities:
+  #
+  #   1. Merchandise Concealment   → ba_alerted, concealment_suspected,
+  #                                  concealment_count, last_ba_* snapshot
+  #   2. Checkout Bypass           → visited_high_value, visited_checkout,
+  #                                  visited_exit
+  #   3. Loitering in High-Value   → loiter_alerted (threshold lives in
+  #                                  lifecycle.loiter_threshold_seconds)
+  #   4. Repeated High-Value Visits→ zone_visit_counts, repeated_visit_alerted
+  #   5. Restricted Zone Violation → (no session state — fires on entry)
+  #
+  # Plumbing fields on PersonSession (camera_history, region_visits,
+  # frame_buffer, max_frame_buffer) are intentionally NOT listed here —
+  # they are infrastructure, not rule inputs.
+  use_case_fields:
+
+    loss_prevention:
+
+      # ── Rule 4: Repeated High-Value Visits ──
+      - { name: zone_visit_counts,      type: dict, default: {},    description: "{region_id: count} of total entries per zone" }
+      - { name: repeated_visit_alerted, type: dict, default: {},    description: "{region_id: True} dedup for REPEATED_VISIT alerts" }
+
+      # ── Rule 2: Checkout Bypass ──
+      - { name: visited_high_value,     type: bool, default: false, description: "Entered any HIGH_VALUE zone (gate for bypass check)" }
+      - { name: visited_checkout,       type: bool, default: false, description: "Entered any CHECKOUT zone" }
+      - { name: visited_exit,           type: bool, default: false, description: "Entered any EXIT zone" }
+
+      # ── Rule 3: Loitering ──
+      - { name: loiter_alerted,         type: dict, default: {},    description: "{region_id: True} dedup for LOITER alerts" }
+
+      # ── Rule 1: Merchandise Concealment ──
+      - { name: ba_alerted,                type: dict,     default: {},    description: "{region_id: True} dedup for CONCEALMENT alerts" }
+      - { name: concealment_suspected,     type: bool,     default: false, description: "BA confirmed suspicious behaviour for current visit" }
+      - { name: concealment_count,         type: dict,     default: {},    description: "{region_id: int} count of concealment events per zone" }
+      # Last BA result snapshot (evidence + UI surfacing)
+      - { name: last_ba_confidence,        type: float,    default: 0.0,   description: "Confidence of most recent BA verdict" }
+      - { name: last_ba_frames_analyzed,   type: int,      default: 0,     description: "Frames analysed in most recent BA call" }
+      - { name: last_ba_vlm_response,      type: optional, default: null,  description: "VLM raw text from most recent BA call" }
+      - { name: last_ba_entry_timestamp,   type: optional, default: null,  description: "Entry timestamp tied to most recent BA call" }
+      - { name: last_ba_status,            type: optional, default: null,  description: "no_match | suspicious | error" }
+
+  # ── Extra fields ────────────────────────────────────────────────────────
+  # Declarative additions stored under session.extra[<name>] WITHOUT a
+  # matching dataclass attribute. Use for fast experiments or tenant
+  # overrides. Promote to use_case_fields once stable.
+  extra_fields: []
+    # Examples (uncomment to enable):
+    # - { name: bag_count,        type: int,   default: 0 }
+    # - { name: cart_value,       type: float, default: 0.0 }
+    # - { name: vip_flag,         type: bool,  default: false }
+
+  # ── Rule-engine context exposure ────────────────────────────────────────
+  expose_to_rules:
+    include: ["*"]
+    exclude:
+      - frame_buffer
+      - bbox
+      - camera_history
+
+  # ── Reset hooks ─────────────────────────────────────────────────────────
+  reset_on:
+    zone_entry:
+      - ba_alerted
+    zone_exit:
+      - ba_alerted
+      - concealment_suspected
+    person_lost: []
