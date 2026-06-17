@@ -71,13 +71,41 @@ import json, sys
 
 cfg = json.load(open('${ZONE_CONFIG}'))
 
-# Scene
-print(f'SCENE_NAME=\"{cfg.get(\"scene_name\", \"\")}\"')
-print(f'SCENE_ZIP=\"{cfg.get(\"scene_zip\", \"\")}\"')
-
-# Cameras (new array format or legacy flat fields)
-cameras = cfg.get('cameras', [])
-if cameras:
+# Multi-scene format: scenes[] array is the primary source.
+# Falls back to legacy flat fields for backward compatibility.
+scenes = cfg.get('scenes', [])
+if scenes:
+    # Use first scene for SCENE_NAME/SCENE_ZIP
+    print(f'SCENE_NAME=\"{scenes[0].get(\"scene_name\", \"\")}\"')
+    print(f'SCENE_ZIP=\"{scenes[0].get(\"scene_zip\", \"\")}\"')
+    # Collect all cameras across all scenes (in order, deduplicated).
+    # Each camera gets its own DLStreamer pipeline config.
+    # Camera entry is a plain string; video_file falls back to the scene video_file.
+    all_cams = []  # [(camera_name, video_file), ...]
+    seen = set()
+    for sc in scenes:
+        sc_video = sc.get('video_file', '')
+        for cam in sc.get('cameras', []):
+            if isinstance(cam, dict):
+                name = cam.get('name', '')
+                video = cam.get('video_file', sc_video)
+            else:
+                name = str(cam)
+                video = sc_video
+            if name and name not in seen:
+                all_cams.append((name, video))
+                seen.add(name)
+    cam1 = all_cams[0] if len(all_cams) > 0 else ('', '')
+    cam2 = all_cams[1] if len(all_cams) > 1 else ('', '')
+    print(f'CAMERA_NAME=\"{cam1[0]}\"')
+    print(f'VIDEO_FILE=\"{cam1[1]}\"')
+    print(f'CAMERA_NAME_2=\"{cam2[0]}\"')
+    print(f'VIDEO_FILE_2=\"{cam2[1]}\"')
+elif cfg.get('cameras'):
+    # Legacy object-array format: cameras[] at top level with name/video keys
+    print(f'SCENE_NAME=\"{cfg.get(\"scene_name\", \"\")}\"')
+    print(f'SCENE_ZIP=\"{cfg.get(\"scene_zip\", \"\")}\"')
+    cameras = cfg['cameras']
     print(f'CAMERA_NAME=\"{cameras[0].get(\"name\", \"\")}\"')
     print(f'VIDEO_FILE=\"{cameras[0].get(\"video\", \"\")}\"')
     if len(cameras) > 1:
@@ -88,6 +116,8 @@ if cameras:
         print('VIDEO_FILE_2=\"\"')
 else:
     # Legacy flat fields
+    print(f'SCENE_NAME=\"{cfg.get(\"scene_name\", \"\")}\"')
+    print(f'SCENE_ZIP=\"{cfg.get(\"scene_zip\", \"\")}\"')
     print(f'CAMERA_NAME=\"{cfg.get(\"camera_name\", \"\")}\"')
     print(f'VIDEO_FILE=\"{cfg.get(\"video_file\", \"\")}\"')
     print(f'CAMERA_NAME_2=\"{cfg.get(\"camera_name_2\", \"\")}\"')
@@ -155,7 +185,7 @@ fi
 echo "  Models:      ${MODELS}"
 
 if [ -z "${SCENE_NAME}" ] || [ -z "${CAMERA_NAME}" ]; then
-    echo -e "${RED}ERROR: zone_config.json must have scene_name and cameras[0].name${NC}"
+    echo -e "${RED}ERROR: zone_config.json must have scenes[0].scene_name and scenes[0].cameras[0]${NC}"
     exit 1
 fi
 

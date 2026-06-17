@@ -23,8 +23,24 @@ if [ ! -f "${ZONE_CONFIG}" ]; then
     exit 1
 fi
 
-CAMERA_URL=$(python3 -c "import json; print(json.load(open('${ZONE_CONFIG}')).get('video_url', ''))" 2>/dev/null)
-FILENAME=$(python3 -c "import json; print(json.load(open('${ZONE_CONFIG}')).get('video_file', ''))" 2>/dev/null)
+CAMERA_URL=$(python3 -c "
+import json
+cfg = json.load(open('${ZONE_CONFIG}'))
+scenes = cfg.get('scenes', [])
+if scenes:
+    print(scenes[0].get('video_url', cfg.get('video_url', '')))
+else:
+    print(cfg.get('video_url', ''))
+" 2>/dev/null)
+FILENAME=$(python3 -c "
+import json
+cfg = json.load(open('${ZONE_CONFIG}'))
+scenes = cfg.get('scenes', [])
+if scenes:
+    print(scenes[0].get('video_file', cfg.get('video_file', '')))
+else:
+    print(cfg.get('video_file', ''))
+" 2>/dev/null)
 CAMERA_FPS=$(python3 -c "import json; print(json.load(open('${ZONE_CONFIG}')).get('camera_fps', 15))" 2>/dev/null)
 
 # Conversion defaults — camera_fps from zone_config, overridable via environment

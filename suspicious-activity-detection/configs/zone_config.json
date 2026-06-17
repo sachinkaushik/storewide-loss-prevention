@@ -8,14 +8,18 @@
     "verify_ssl": false
   },
   "stream_density": 1,
-  "scene_name": "storewide loss prevention",
-  "scene_zip": "storewide-loss-prevention.zip",
-  "camera_name": "lp-camera1",
   "camera_fps": 30,
-  "video_file": "lp-camera1.mp4",
-  "video_url": "https://www.pexels.com/download/video/37668440/",
-  "zones": {
-    "aisle1": "HIGH_VALUE",
-    "aisle2": "CHECKOUT"
-  }
+  "scenes": [
+    {
+      "scene_name": "storewide loss prevention",
+      "scene_zip": "storewide-loss-prevention.zip",
+      "cameras": ["lp-camera1"],
+      "video_file": "lp-camera1.mp4",
+      "video_url": "https://www.pexels.com/download/video/37668440/",
+      "zones": {
+        "aisle1": "HIGH_VALUE",
+        "aisle2": "CHECKOUT"
+      }
+    }
+  ]
 }
