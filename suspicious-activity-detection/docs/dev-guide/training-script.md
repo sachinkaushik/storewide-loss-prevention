@@ -8,27 +8,21 @@ A simple, speakable script for presenting the Store-Wide Loss Prevention
 ## Script (~4 min + demo)
 
 ### 1. Intro & Overview (~1 min)
-"Good morning everyone. I'll walk you through our **Suspicious Activity Detection**
+"Hi everyone. I'll walk you through **Suspicious Activity Detection**
 solution — an edge-AI system for retail loss prevention. The problem it solves is
 simple: today, store cameras are mostly used to *review* incidents after they
 happen. Our system watches the cameras in **real time** and raises **explainable
-alerts** the moment something suspicious happens — merchandise concealment, checkout
+alerts** the moment something suspicious happens — concealment, checkout
 bypass, loitering, repeat visits, or entering a restricted area.
 
 Under the hood it combines **real-time person tracking from SceneScape** with
 **lightweight pose detection** and **Vision-Language-Model (VLM) confirmation**,
-monitoring behavior across store zones. The architecture is **layered**: one
-application-specific **Scene-Understanding Service** owns the session state and
+monitoring behavior across store zones. **Scene-Understanding Service** owns the session state and
 business logic, while leveraging **generic, reusable services** —
 BehavioralAnalysisService and AlertService — for analysis and alerting. And a core
 design principle is **config-driven extensibility**: detection rules, session flags,
 escalation services, pose patterns, and VLM prompts are all defined in **YAML/JSON**,
 so new scenarios or zone types need **no code changes — only configuration**."
-
-### 2. Where it runs (20 sec)
-"Everything runs **on Intel hardware — CPU, GPU, or NPU — fully on-premise**. No
-cloud. That means customer video never leaves the store, which is a big privacy
-and compliance advantage."
 
 ### 3. Architecture (walk through SAD_Architecture.png — ~1.5 min)
 "Let me walk you through the architecture, left to right:
@@ -38,22 +32,27 @@ and compliance advantage."
   ID** across cameras, and tracks which **zone** they're in with enter/exit and
   dwell times.
 - **SceneScape → MQTT → Scene-Understanding Service:** SceneScape publishes all of
-  that on an **MQTT bus**. The **Scene-Understanding Service** — our single
-  application-specific service — subscribes to those events (no direct camera
-  dependency, so it stays decoupled and scalable). It **owns the session state and
-  business logic**: a session per person, plus the **rule engine** that decides
-  what's suspicious. Crucially, its **entire behavior is driven by one config file,
-  `rules.yaml`** — the detection logic is *not* hard-coded. It leverages two
-  **generic, reusable** services for the heavy lifting —
-  **BehavioralAnalysisService** and **AlertService**.
-- **Escalation → BehavioralAnalysisService:** When a rule needs a closer look, the
-  Scene-Understanding Service escalates to the reusable **BehavioralAnalysisService** —
-  the two-stage brain. A cheap **pose model** filters frames first, and only the
-  suspicious ones go to the **Vision-Language Model, Qwen2.5-VL**, served on
-  **OpenVINO Model Server**, which returns a confidence score and a **plain-English
-  reason**.
+  that on an **MQTT bus**, and the **Scene-Understanding Service** subscribes to
+  those events.
+  It **owns the session state and business logic** — a session per person, plus the
+  **rule engine** that decides what's suspicious. Its **entire behavior is driven
+  by one config file, `rules.yaml`**; the detection logic is *not* hard-coded. The
+  rules defined there drive what gets triggered, and we can **enable or disable any
+  rule at any time** — no rebuild, no code change.
+
+- **Escalation → BehavioralAnalysisService:** We define a `behavioral_analysis`
+  rule that calls this **external service**. When a person enters a **high-value
+  zone**, the rule triggers: the Scene-Understanding Service **captures frames,
+  stores them in SeaweedFS**, and **publishes a request to MQTT**. The reusable
+  **BehavioralAnalysisService** consumes that message from the queue and runs a
+  **two-stage analysis** — first a lightweight **pose analyzer** checks for
+  suspicious activity; only if it **confirms** something suspicious are the frames
+  sent to the **Vision-Language Model (Qwen2.5-VL, on OpenVINO Model Server)** for
+  deeper analysis, which returns a confidence score and a **plain-English reason**.
+
 - **Frame storage:** Evidence frames for people in high-value zones are saved to
   an **on-prem object store** — this backs each alert and never leaves the store.
+
 - **Alerts → AlertService → Dashboard:** Confirmed behavior becomes an **alert**.
   The reusable **AlertService** deduplicates and routes it, and it appears on the
   **operator dashboard** with severity, person, zone, and evidence.
@@ -78,21 +77,6 @@ all extensible without touching code:
 "So to add a new suspicious behavior, change a threshold, or wire in a new analysis
 service, we edit `rules.yaml` — no rebuild, no code release."
 
-### 4. What makes it different (30 sec)
-"Three things set us apart:
-- One — it's **explainable**, not a black-box risk score.
-- Two — it's **fully edge and on-prem**, a privacy win over cloud competitors.
-- Three — it's **config-driven**: detection rules, session flags, escalation
-  services, pose patterns, and VLM prompts all live in YAML/JSON. New scenarios or
-  zone types need no code change — only configuration."
-
-### 5. Live demo
-"Let me show you live:
-1. Here's the **dashboard** with live camera feeds.
-2. I'll walk a person through a high-value zone — watch the alert pop up with the
-   **evidence frames and the VLM's explanation**.
-3. Now checkout bypass — exit without paying → it escalates to **CRITICAL**.
-4. And a restricted-zone entry → immediate **CRITICAL** alert."
 
 ### 6. Close (15 sec)
 "So in short: real-time, explainable, privacy-preserving loss prevention that runs
