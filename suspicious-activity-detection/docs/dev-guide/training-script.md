@@ -11,7 +11,7 @@ A simple, speakable script for presenting the Store-Wide Loss Prevention
 "Hi everyone. I'll walk you through **Suspicious Activity Detection**
 solution — an edge-AI system for retail loss prevention. The problem it solves is
 simple: today, store cameras are mostly used to *review* incidents after they
-happen. Our system watches the cameras in **real time** and raises **explainable
+happen. This system watches the cameras in **real time** and raises **explainable
 alerts** the moment something suspicious happens — concealment, checkout
 bypass, loitering, repeat visits, or entering a restricted area.
 
@@ -31,14 +31,16 @@ so new scenarios or zone types need **no code changes — only configuration**."
   detects every person, re-identifies them so each shopper keeps a **consistent
   ID** across cameras, and tracks which **zone** they're in with enter/exit and
   dwell times.
-- **SceneScape → MQTT → Scene-Understanding Service:** SceneScape publishes all of
-  that on an **MQTT bus**, and the **Scene-Understanding Service** subscribes to
-  those events.
-  It **owns the session state and business logic** — a session per person, plus the
-  **rule engine** that decides what's suspicious. Its **entire behavior is driven
-  by one config file, `rules.yaml`**; the detection logic is *not* hard-coded. The
-  rules defined there drive what gets triggered, and we can **enable or disable any
-  rule at any time** — no rebuild, no code change.
+
+- **SceneScape → MQTT → Scene-Understanding Service:** SceneScape publishes every
+  person and zone event on an **MQTT bus**, and the **Scene-Understanding Service**
+  subscribes to them. This is the **decision-making core** of the app: it keeps a
+  **session per person** — tracking which zones they entered, how long they stayed,
+  and per-person flags — and runs a **rule engine** driven by `rules.yaml`. For each
+  incoming event it evaluates the configured rules; when a rule's **trigger and
+  conditions** match, it fires that rule's **actions** — either raise an **alert**
+  or **escalate** to behavioral analysis. Every rule lives in `rules.yaml`, so we
+  can add, tune, or enable/disable any rule at any time — no rebuild, no code change.
 
 - **Escalation → BehavioralAnalysisService:** We define a `behavioral_analysis`
   rule that calls this **external service**. When a person enters a **high-value
