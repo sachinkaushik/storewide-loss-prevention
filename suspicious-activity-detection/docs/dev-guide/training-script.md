@@ -7,7 +7,7 @@ A simple, speakable script for presenting the Store-Wide Loss Prevention
 
 ## Script (~4 min + demo)
 
-### 1. Intro & Overview (~1 min)
+###  Intro & Overview (~1 min)
 "Hi everyone. I'll walk you through **Suspicious Activity Detection**
 solution — an edge-AI system for retail loss prevention. The problem it solves is
 simple: today, store cameras are mostly used to *review* incidents after they
@@ -24,7 +24,7 @@ design principle is **config-driven extensibility**: detection rules, session fl
 escalation services, pose patterns, and VLM prompts are all defined in **YAML/JSON**,
 so new scenarios or zone types need **no code changes — only configuration**."
 
-### 3. Architecture (walk through SAD_Architecture.png — ~1.5 min)
+###  Architecture (walk through SAD_Architecture.png — ~1.5 min)
 "Let me walk you through the architecture, left to right:
 
 - **Cameras → SceneScape:** The store cameras feed into **SceneScape**, which
@@ -80,10 +80,6 @@ all extensible without touching code:
 service, we edit `rules.yaml` — no rebuild, no code release."
 
 
-### 6. Close (15 sec)
-"So in short: real-time, explainable, privacy-preserving loss prevention that runs
-at the edge on Intel hardware, built on SceneScape — and it adapts to each store
-without re-engineering. Happy to take questions."
 
 ---
 
