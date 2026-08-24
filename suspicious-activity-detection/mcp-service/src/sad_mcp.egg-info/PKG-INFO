@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: sad-mcp
+Version: 0.1.0
+Summary: Suspicious Activity Detection MCP service for the Central QSR Agent.
+Requires-Python: >=3.11
+Requires-Dist: mcp-service-base[mcp] @ git+https://github.com/sachinkaushik/mcp-service-base.git@v0.1.3

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sad-mcp"
+version = "0.1.0"
+description = "Suspicious Activity Detection MCP service for the Central QSR Agent."
+requires-python = ">=3.11"
+dependencies = [
+    "mcp-service-base[mcp] @ git+https://github.com/sachinkaushik/mcp-service-base.git@v0.1.3",
+]
+
+[project.scripts]
+sad-mcp = "main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["config", "events", "queries", "tools", "main"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

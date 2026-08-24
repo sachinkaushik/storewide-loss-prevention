@@ -33,6 +33,14 @@ COMPOSE_ALL := $(if $(wildcard $(CAMERAS_OVERRIDE)),$(COMPOSE_ALL) -f $(CAMERAS_
 # Enable Gradio UI (set to false to skip)
 ENABLE_UI ?= true
 
+# ---- SAD MCP service (host process, not a container) -------------------------
+# Runs on the host in a venv so there is no extra image to build/maintain.
+MCP_DIR := mcp-service
+MCP_VENV := $(MCP_DIR)/.venv
+MCP_PID := /tmp/sad-mcp.pid
+MCP_LOG := /tmp/sad-mcp.log
+MCP_PORT ?= 9000
+
 # Conditionally enable the Gradio UI profile
 ENABLE_UI_LOWER := $(shell echo $(ENABLE_UI) | tr A-Z a-z)
 ifeq ($(ENABLE_UI_LOWER),true)
@@ -219,6 +227,7 @@ up: validate-device gen-zone-config
 	fi
 	@echo ""
 	@echo "To stop: make down"
+	@$(MAKE) mcp-up
 	@if [ -f /tmp/swlp-auto-stop.pid ]; then \
 		kill -- -$$(cat /tmp/swlp-auto-stop.pid) 2>/dev/null || kill $$(cat /tmp/swlp-auto-stop.pid) 2>/dev/null || true; \
 		rm -f /tmp/swlp-auto-stop.pid; \
@@ -238,6 +247,7 @@ down:
 	@$(MAKE) down-search
 else
 down:
+	@$(MAKE) mcp-down
 	@BRIDGE=$$(docker ps -a --filter name=vss-recall-bridge --format '{{.Names}}' | head -n1); \
 	if [ -n "$$BRIDGE" ]; then \
 		docker network disconnect $(LP_NETWORK) "$$BRIDGE" 2>/dev/null || true; \
@@ -252,6 +262,40 @@ down:
 	@$(SEARCH_ENV) $(COMPOSE_SEARCH) --profile recall-ui --profile standalone-rtsp down --remove-orphans || true
 	@-docker volume rm storewide-lp_seaweedfs-data 2>/dev/null || true
 endif
+
+
+# ---- SAD MCP service (host process) -----------------------------------------
+# Starts the SAD MCP server as a plain host process in a venv — no container.
+.PHONY: mcp-up
+mcp-up:
+	@if [ ! -d "$(MCP_VENV)" ]; then \
+		echo "Creating SAD MCP venv..."; \
+		python3 -m venv "$(MCP_VENV)"; \
+		"$(CURDIR)/$(MCP_VENV)/bin/pip" install -q --upgrade pip; \
+	fi
+	@# Always sync deps so pinned-version bumps are picked up.
+	@"$(CURDIR)/$(MCP_VENV)/bin/pip" install -q -e "$(MCP_DIR)"
+	@if [ -f "$(MCP_PID)" ] && kill -0 $$(cat "$(MCP_PID)") 2>/dev/null; then \
+		echo "  ✓ SAD MCP already running (pid $$(cat $(MCP_PID)), :$(MCP_PORT))"; \
+	else \
+		echo "Starting SAD MCP host process on :$(MCP_PORT)..."; \
+		nohup env MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=$(MCP_PORT) \
+			"$(CURDIR)/$(MCP_VENV)/bin/sad-mcp" \
+			> "$(MCP_LOG)" 2>&1 & \
+		echo $$! > "$(MCP_PID)"; \
+		echo "  ✓ SAD MCP started (pid $$(cat $(MCP_PID)), log: $(MCP_LOG), http://localhost:$(MCP_PORT)/mcp)"; \
+	fi
+
+.PHONY: mcp-down
+mcp-down:
+	@if [ -f "$(MCP_PID)" ] && kill -0 $$(cat "$(MCP_PID)") 2>/dev/null; then \
+		kill $$(cat "$(MCP_PID)") 2>/dev/null || true; \
+		rm -f "$(MCP_PID)"; \
+		echo "  ✓ SAD MCP stopped"; \
+	else \
+		rm -f "$(MCP_PID)"; \
+		echo "  SAD MCP not running"; \
+	fi
 
 
 # Scenescape only (without LP services)
