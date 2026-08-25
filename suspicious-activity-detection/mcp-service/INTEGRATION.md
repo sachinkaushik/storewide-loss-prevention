@@ -50,12 +50,12 @@ flowchart TB
     end
     AGENT["Central QSR Agent<br/>(Hermes — MCP client)"]
 
-    TOOLS -->|@svc.read_tool / @svc.act_tool| SS
+    TOOLS -->|register read and act tools| SS
     TOOLS --> QUERIES --> LOG
     EVENTS -->|svc.emit| SS
     MAIN -->|svc.run| SS
     SS --- LOG & DEL & POL & TEL & MCP
-    MCP <-->|describe / subscribe / read| AGENT
+    MCP <-->|describe, subscribe, read| AGENT
     POL -->|gated act| AGENT
 ```
 
@@ -143,7 +143,7 @@ fan out*:
 
 ```mermaid
 sequenceDiagram
-    participant P as SAD pipeline<br/>(MQTT: alerts/#, ba/results)
+    participant P as SAD pipeline (MQTT alerts, ba results)
     participant I as ingest_alert()
     participant SS as ServiceServer.emit()
     participant LOG as Durable log (SQLite)
