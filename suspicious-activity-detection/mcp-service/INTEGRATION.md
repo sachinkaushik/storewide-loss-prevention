@@ -1,11 +1,11 @@
 # SAD MCP Service — Integration Guide
 
 How the **Suspicious Activity Detection (SAD) MCP service** is built on the generic
-`mcp-service-base` library, how it exposes tools to the Central QSR Agent, and how
+`mcp-service-sdk` library, how it exposes tools to the Central QSR Agent, and how
 events fan out from the SAD pipeline to the agent.
 
 - **Service name:** `suspicious_activity`
-- **Built on:** [`mcp-service-base`](https://github.com/sachinkaushik/mcp-service-base) (pinned `v0.1.3`)
+- **Built on:** `mcp-service-sdk` from `edge-ai-libraries/libraries/mcp-service-sdk`
 - **MCP SDK:** official `mcp` (2.x, `MCPServer`)
 - **Location:** `storewide-loss-prevention/suspicious-activity-detection/mcp-service`
 
@@ -20,13 +20,14 @@ acts, and it cannot tell this service apart from any other (real or simulated).
 
 The service writes **only domain code** — its event schema, query helpers, and
 tool declarations. Everything else (durable log, event delivery/fan-out, policy
-gate, telemetry, MCP scaffolding) is inherited from `mcp-service-base`.
+gate, telemetry, MCP scaffolding) is inherited from `mcp-service-sdk`.
+gate, telemetry, MCP scaffolding) is inherited from `mcp-service-sdk`.
 
 ---
 
-## 2. How it connects to the generic `mcp-service-base`
+## 2. How it connects to the generic `mcp-service-sdk`
 
-`mcp-service-base` is a **library**, not a running server. This service imports it,
+`mcp-service-sdk` is a **library**, not a running server. This service imports it,
 creates one `ServiceServer`, registers its tools, and runs it — that instance *is*
 the MCP server the agent connects to.
 
@@ -40,7 +41,7 @@ flowchart TB
         CONFIG["config.py<br/>env settings"]
         MAIN["main.py<br/>entrypoint"]
     end
-    subgraph BASE["mcp-service-base (imported library)"]
+    subgraph BASE["mcp-service-sdk (imported library)"]
         SS["ServiceServer"]
         LOG["SQLiteLog (durable log)"]
         DEL["Delivery (fan-out)"]
@@ -63,12 +64,12 @@ flowchart TB
 
 ```toml
 dependencies = [
-  "mcp-service-base[mcp] @ git+https://github.com/sachinkaushik/mcp-service-base.git@v0.1.3",
+  "mcp-service-sdk[mcp] @ git+https://github.com/sachinkaushik/edge-ai-libraries.git@mcp#subdirectory=libraries/mcp-service-sdk",
 ]
 ```
 
-The `[mcp]` extra pulls in the official MCP SDK. The `@v0.1.3` pin keeps builds
-reproducible.
+The `[mcp]` extra pulls in the official MCP SDK. Pin this to a tag or commit in
+`edge-ai-libraries` for reproducible builds.
 
 ---
 
@@ -89,7 +90,7 @@ reproducible.
 
 ## 4. The Service Contract (what the agent sees)
 
-Every service on `mcp-service-base` exposes the same four MCP capabilities:
+Every service on `mcp-service-sdk` exposes the same four MCP capabilities:
 
 | Capability | This service |
 |---|---|
@@ -138,7 +139,7 @@ class Activity(TypedDict):
 ## 5. How events fan out (SAD pipeline → agent)
 
 The SAD MQTT consumer publishes a violation by calling **one function**,
-`ingest_alert(...)`. From there `mcp-service-base` does *emit-to-log-first, then
+`ingest_alert(...)`. From there `mcp-service-sdk` does *emit-to-log-first, then
 fan out*:
 
 ```mermaid
@@ -166,7 +167,7 @@ Key properties:
   benchmarking/debugging.
 - **Idempotent.** `ref_id` = the MQTT message id; a redelivered message is stored
   once, never double-counted.
-- **Fan-out sinks** (chosen by config in `mcp-service-base`):
+- **Fan-out sinks** (chosen by config in `mcp-service-sdk`):
   - **EventHub** (default) — de-dupes, fans out, retries; the agent inbox listens here.
   - **Webhook** — HTTP callback for partners / other agent frameworks.
   - **Disabled** — clean benchmark runs (log only, no delivery).
@@ -264,7 +265,7 @@ Details:
 ```bash
 cd mcp-service
 python3 -m venv .venv
-.venv/bin/pip install -e .        # installs mcp-service-base from GitHub + this package
+.venv/bin/pip install -e .        # installs mcp-service-sdk from edge-ai-libraries + this package
 
 # run the server
 .venv/bin/sad-mcp                 # stdio; set MCP_TRANSPORT=streamable-http for HTTP
@@ -278,15 +279,15 @@ python3 -m venv .venv
 
 ## 10. Versioning
 
-- This service pins `mcp-service-base` to a **git tag** (`@v0.1.3`) for reproducible builds.
+- This service consumes `mcp-service-sdk` from the `edge-ai-libraries` repository subdirectory.
 - `make mcp-up` runs `pip install -e` every start, so bumping the pin here is picked up automatically.
-- When an internal package registry exists, swap the git URL for `mcp-service-base[mcp]==0.1.3`.
+- When an internal package registry exists, swap the git URL for `mcp-service-sdk[mcp]==<version>`.
 
 ---
 
 ## 11. Summary
 
-- The SAD service is a **thin instance** of the generic `mcp-service-base` contract.
+- The SAD service is a **thin instance** of the generic `mcp-service-sdk` contract.
 - It writes only its **schema + query helpers + tool declarations**; the base
   provides the log, fan-out, policy gate, telemetry, and MCP scaffolding.
 - Events flow **pipeline → `ingest_alert` → emit → durable log (first) → fan-out → agent**,

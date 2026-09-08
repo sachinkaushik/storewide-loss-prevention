@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from mcp_service_base import GateLevel, ServiceServer
+from mcp_service_sdk import GateLevel, ServiceConfig, ServiceServer
 from pydantic import Field
 
 import queries
@@ -17,7 +17,14 @@ from models import Activity
 
 _settings = get_settings()
 
-svc = ServiceServer(service="suspicious_activity", store_id=_settings.store_id)
+svc = ServiceServer.from_config(
+    ServiceConfig(
+        service="suspicious_activity",
+        store_id=_settings.store_id,
+        log_backend=_settings.log_backend,
+        log_path=_settings.log_path,
+    )
+)
 svc.register_event_type(EVENT_TYPE, schema=SCHEMA)
 
 

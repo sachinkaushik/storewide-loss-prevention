@@ -208,6 +208,37 @@ services:
       - ./configs/alert-config.yaml:/app/config/config.yaml:ro
     restart: unless-stopped
 
+  # ---------- Suspicious Activity MCP service (agent tool endpoint) ----------
+  # Locally built (not in a registry). pull_policy: build makes `make up` build
+  # it instead of trying to pull. Published on loopback so the host Hermes agent
+  # reaches http://127.0.0.1:9000/mcp.
+  suspicious-activity-mcp:
+    build:
+      context: mcp-service
+      dockerfile: Dockerfile
+    image: sad-mcp:local
+    pull_policy: build
+    ports:
+      - "127.0.0.1:${MCP_PORT:-9000}:9000"
+    networks:
+      - storewide-lp
+    environment:
+      STORE_ID: ${STORE_ID:-store_001}
+      SEED_DEMO: ${SEED_DEMO:-true}
+      SAD_LOG_PATH: /data/sad_log.sqlite
+      MCP_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 9000
+    volumes:
+      - sad-mcp-data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('localhost', 9000), 2)"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
   # ---------- SeaweedFS (S3-compatible Object Storage) ----------
   seaweedfs:
     image: chrislusf/seaweedfs:4.29
@@ -275,6 +306,7 @@ networks:
 volumes:
   seaweedfs-data:
   ovms-cache:
+  sad-mcp-data:
 
 # Override the SceneScape controller config sources to use this app's
 # configs/scenescape/ files directly, instead of the vendored defaults / env-var

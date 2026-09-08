@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from mcp_service_base import SQLiteLog
+from mcp_service_sdk import SQLiteLog
 
 import events
 import queries
@@ -10,7 +10,7 @@ import queries
 
 def _seed(log: SQLiteLog) -> None:
     def ev(zone: str, ref: str, ts: int):
-        from mcp_service_base.envelope import EventEnvelope
+        from mcp_service_sdk.envelope import EventEnvelope
 
         return EventEnvelope(
             event_type=events.EVENT_TYPE,
