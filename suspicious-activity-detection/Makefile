@@ -33,22 +33,17 @@ COMPOSE_ALL := $(if $(wildcard $(CAMERAS_OVERRIDE)),$(COMPOSE_ALL) -f $(CAMERAS_
 # Enable Gradio UI (set to false to skip)
 ENABLE_UI ?= true
 
-# ---- SAD MCP service (host process, not a container) -------------------------
-# Runs on the host in a venv so there is no extra image to build/maintain.
-MCP_DIR := mcp-service
-MCP_VENV := $(MCP_DIR)/.venv
-MCP_PID := /tmp/sad-mcp.pid
-MCP_LOG := /tmp/sad-mcp.log
-MCP_PORT ?= 9000
-# Optional developer speed-up: point MCP_SDK_LOCAL at a local mcp-service-sdk
-# checkout to skip the Git install (which pulls submodules recursively). Empty by
-# default — on a user machine the SDK is installed from the pinned Git ref in the
-# service pyproject. Example: MCP_SDK_LOCAL=/path/to/mcp-service-sdk make mcp-up
-MCP_SDK_LOCAL ?=
-# Reinstall deps on every start only when explicitly requested (default: no, so
-# `make up` stays fast). Seed demo data so the read tools return data.
-MCP_REINSTALL ?= false
-SEED_DEMO ?= true
+# Select exactly one application scenario at runtime.
+# Valid values: retail, kitchen.
+USE_CASE ?= retail
+USE_CASE_LOWER := $(shell echo $(USE_CASE) | tr A-Z a-z)
+USECASE_DIR := configs/usecase/$(USE_CASE_LOWER)
+USECASE_SCENE_CONFIG := $(USECASE_DIR)/scene-config.yaml
+USECASE_RULES_CONFIG := $(USECASE_DIR)/rules.yaml
+USECASE_PATTERNS_CONFIG := $(USECASE_DIR)/patterns.yaml
+USECASE_ALERT_CONFIG := $(USECASE_DIR)/alert-config.yaml
+USECASE_ZONE_CONFIG := $(USECASE_DIR)/zone_config.json
+export USE_CASE := $(USE_CASE_LOWER)
 
 # Conditionally enable the Gradio UI profile
 ENABLE_UI_LOWER := $(shell echo $(ENABLE_UI) | tr A-Z a-z)
@@ -118,6 +113,27 @@ validate-device:
 		exit 1; \
 	fi
 
+.PHONY: validate-use-case
+validate-use-case:
+	@if [ "$(USE_CASE_LOWER)" != "retail" ] && [ "$(USE_CASE_LOWER)" != "kitchen" ]; then \
+		echo "\033[1;31mERROR: Invalid USE_CASE='$(USE_CASE)'. Use one of: retail, kitchen.\033[0m"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(USECASE_DIR)" ]; then \
+		echo "\033[1;31mERROR: Missing use case config directory: $(USECASE_DIR).\033[0m"; \
+		exit 1; \
+	fi
+	@for f in scene-config.yaml rules.yaml patterns.yaml alert-config.yaml; do \
+		if [ ! -f "$(USECASE_DIR)/$$f" ]; then \
+			echo "\033[1;31mERROR: Missing use case config: $(USECASE_DIR)/$$f.\033[0m"; \
+			exit 1; \
+		fi; \
+	done
+
+.PHONY: select-use-case
+select-use-case: validate-use-case
+	@echo "  ✓ selected USE_CASE=$(USE_CASE_LOWER) from $(USECASE_DIR)"
+
 
 # ---- Submodules ----
 
@@ -140,20 +156,20 @@ download-models:
 .PHONY: download-sample-data
 download-sample-data: gen-zone-config
 	@echo "Downloading sample video..."
-	bash download_models/download_sample_video.sh
+	ZONE_CONFIG="$(abspath $(USECASE_ZONE_CONFIG))" bash download_models/download_sample_video.sh
 
 
 # ---- Initialization ----
 
-# Generate the legacy configs/zone_config.json that the vendored SceneScape
-# scripts consume, from configs/scene-config.yaml (the single source of truth).
+# Generate the legacy zone_config.json that the vendored SceneScape scripts
+# consume, from the selected scenario's scene-config.yaml.
 .PHONY: gen-zone-config
-gen-zone-config:
-	@python3 scripts/gen-zone-config.py
+gen-zone-config: validate-use-case
+	@SCENE_CONFIG="$(USECASE_SCENE_CONFIG)" ZONE_CONFIG="$(USECASE_ZONE_CONFIG)" python3 scripts/gen-zone-config.py
 
 .PHONY: init
 init: gen-zone-config
-	@$(MAKE) -C $(SCENESCAPE_DIR) APP_DIR=$(CURDIR) RESOURCE_CONFIG=$(RESOURCE_CONFIG) init
+	@ZONE_CONFIG="$(abspath $(USECASE_ZONE_CONFIG))" $(MAKE) -C $(SCENESCAPE_DIR) APP_DIR=$(CURDIR) RESOURCE_CONFIG=$(RESOURCE_CONFIG) init
 
 # ---- Full Stack (Scenescape + LP) ----
 
@@ -167,7 +183,7 @@ up:
 	@$(MAKE) run-search
 else
 up: validate-device gen-zone-config
-	@$(MAKE) -C $(SCENESCAPE_DIR) APP_DIR=$(CURDIR) RESOURCE_CONFIG=$(RESOURCE_CONFIG) init init-sample-data download-models init-volumes
+	@ZONE_CONFIG="$(abspath $(USECASE_ZONE_CONFIG))" $(MAKE) -C $(SCENESCAPE_DIR) APP_DIR=$(CURDIR) RESOURCE_CONFIG=$(RESOURCE_CONFIG) init init-sample-data download-models init-volumes
 	@$(MAKE) patch-device
 	@mkdir -p $(RESULTS_PATH) $(RESULTS_PATH)/ba $(RESULTS_PATH)/swlp
 	@if [ "$(REGISTRY)" = "true" ]; then \
@@ -224,6 +240,7 @@ up: validate-device gen-zone-config
 
 	@echo ""
 	@echo "Services running:"
+	@echo "  Use case:        $(USE_CASE_LOWER)"
 	@echo "  Scenescape UI:   https://localhost"
 	@echo "  Login:           admin / $$(grep SUPASS docker/.env | cut -d= -f2-)"
 	@if [ "$(ENABLE_UI_LOWER)" = "true" ]; then \
@@ -236,7 +253,6 @@ up: validate-device gen-zone-config
 	fi
 	@echo ""
 	@echo "To stop: make down"
-	@echo "  SAD MCP endpoint:  http://localhost:$(MCP_PORT)/mcp (container: suspicious-activity-mcp)"
 	@if [ -f /tmp/swlp-auto-stop.pid ]; then \
 		kill -- -$$(cat /tmp/swlp-auto-stop.pid) 2>/dev/null || kill $$(cat /tmp/swlp-auto-stop.pid) 2>/dev/null || true; \
 		rm -f /tmp/swlp-auto-stop.pid; \
@@ -270,54 +286,6 @@ down:
 	@$(SEARCH_ENV) $(COMPOSE_SEARCH) --profile recall-ui --profile standalone-rtsp down --remove-orphans || true
 	@-docker volume rm storewide-lp_seaweedfs-data 2>/dev/null || true
 endif
-
-
-# ---- SAD MCP service (host process) -----------------------------------------
-# Starts the SAD MCP server as a plain host process in a venv — no container.
-.PHONY: mcp-up
-mcp-up:
-	@if [ ! -x "$(CURDIR)/$(MCP_VENV)/bin/sad-mcp" ] || [ "$(MCP_REINSTALL)" = "true" ]; then \
-		if [ ! -d "$(MCP_VENV)" ]; then \
-			echo "Creating SAD MCP venv..."; \
-			python3 -m venv "$(MCP_VENV)"; \
-			"$(CURDIR)/$(MCP_VENV)/bin/pip" install -q --upgrade pip; \
-		fi; \
-		if [ -n "$(MCP_SDK_LOCAL)" ] && [ -f "$(MCP_SDK_LOCAL)/pyproject.toml" ]; then \
-			echo "Installing mcp-service-sdk from local checkout (fast)..."; \
-			"$(CURDIR)/$(MCP_VENV)/bin/pip" install -q "$(MCP_SDK_LOCAL)[mcp]"; \
-			"$(CURDIR)/$(MCP_VENV)/bin/pip" install -q --no-deps -e "$(MCP_DIR)"; \
-		else \
-			echo "Installing SAD MCP service (mcp-service-sdk from Git)..."; \
-			"$(CURDIR)/$(MCP_VENV)/bin/pip" install -q -e "$(MCP_DIR)"; \
-		fi; \
-	else \
-		echo "  ✓ SAD MCP deps present (set MCP_REINSTALL=true to reinstall)"; \
-	fi
-	@if [ "$(SEED_DEMO)" = "true" ]; then \
-		PYTHONPATH="$(CURDIR)/$(MCP_DIR)/src" "$(CURDIR)/$(MCP_VENV)/bin/python" "$(CURDIR)/$(MCP_DIR)/scripts/seed_demo.py" >/dev/null 2>&1 \
-			&& echo "  ✓ SAD demo data seeded" || true; \
-	fi
-	@if [ -f "$(MCP_PID)" ] && kill -0 $$(cat "$(MCP_PID)") 2>/dev/null; then \
-		echo "  ✓ SAD MCP already running (pid $$(cat $(MCP_PID)), :$(MCP_PORT))"; \
-	else \
-		echo "Starting SAD MCP host process on :$(MCP_PORT)..."; \
-		nohup env MCP_TRANSPORT=streamable-http MCP_HOST=0.0.0.0 MCP_PORT=$(MCP_PORT) \
-			"$(CURDIR)/$(MCP_VENV)/bin/sad-mcp" \
-			> "$(MCP_LOG)" 2>&1 & \
-		echo $$! > "$(MCP_PID)"; \
-		echo "  ✓ SAD MCP started (pid $$(cat $(MCP_PID)), log: $(MCP_LOG), http://localhost:$(MCP_PORT)/mcp)"; \
-	fi
-
-.PHONY: mcp-down
-mcp-down:
-	@if [ -f "$(MCP_PID)" ] && kill -0 $$(cat "$(MCP_PID)") 2>/dev/null; then \
-		kill $$(cat "$(MCP_PID)") 2>/dev/null || true; \
-		rm -f "$(MCP_PID)"; \
-		echo "  ✓ SAD MCP stopped"; \
-	else \
-		rm -f "$(MCP_PID)"; \
-		echo "  SAD MCP not running"; \
-	fi
 
 
 # Scenescape only (without LP services)

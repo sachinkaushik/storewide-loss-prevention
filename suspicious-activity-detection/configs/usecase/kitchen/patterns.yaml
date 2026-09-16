@@ -1,0 +1,61 @@
+# Copyright (C) 2026 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+
+# Scenario: kitchen
+
+vlm_settings:
+  endpoint: "http://ovms-vlm:8001"
+  model_name: "Qwen/Qwen2.5-VL-7B-Instruct"
+  timeout: 30.0
+  max_tokens: 60
+  temperature: 0.1
+  max_image_size: 256
+  max_concurrency: 1
+
+patterns:
+  floor_to_food_area:
+    description: "Item picked from prep floor and placed back in the food area"
+    enabled: true
+    alert_type: FOOD_SAFETY_VIOLATION
+    pose:
+      per_side: true
+      min_pose_confidence: 0.3
+      min_confidence_for_alert: 0.30
+      phases:
+        - name: hand_reaches_to_floor
+          min_frames: 3
+          conditions:
+            - subject: wrist
+              relation: below
+              reference: knee
+            - subject: elbow
+              relation: bent
+              reference: [shoulder, wrist]
+              min_angle: 20
+              max_angle: 165
+        - name: hand_returns_to_food_area
+          min_frames: 3
+          conditions:
+            - subject: wrist
+              relation: above
+              reference: waist_midpoint
+            - subject: wrist
+              relation: near
+              reference: chest_midpoint
+              threshold: 0.75
+    vlm:
+      enabled: true
+      num_frames: 4
+      confidence_threshold: 0.7
+      prompt: |
+        You are a kitchen food-safety reviewer. The pose system detected a hand moving down toward the prep floor and then back toward a food-preparation area.
+
+        Confirm whether an item appears to be picked up from the floor and placed back in the food area, prep surface, tray, container, or ready-to-eat workflow.
+
+        Mark suspicious only when the sequence clearly shows floor contact or floor retrieval followed by return to food handling. Do not mark suspicious for cleaning, empty-hand movement, tying shoes, or picking up non-food waste that is not returned to food handling.
+
+        Output JSON only: {"reasoning":"one sentence describing what you see","suspicious":true|false,"confidence":0.0-1.0}
+      response_fields:
+        - reasoning
+        - suspicious
+        - confidence

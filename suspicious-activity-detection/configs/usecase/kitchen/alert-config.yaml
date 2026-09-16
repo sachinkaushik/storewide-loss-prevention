@@ -1,0 +1,21 @@
+service:
+  retry_attempts: 3
+  retry_interval_seconds: 5
+
+subscriptions:
+  - alert_type: FOOD_SAFETY_VIOLATION
+    dedup:
+      enabled: true
+      strategy: field_hash
+      fields:
+        - metadata.person_id
+        - metadata.zone_id
+      window_seconds: 55
+      on_missing: skip
+      hash:
+        algorithm: sha1
+        truncate: 16
+    delivery:
+      - type: mqtt
+        topic: alerts/food_safety_violation
+      - type: log

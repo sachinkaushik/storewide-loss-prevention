@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Download and convert sample video using zone_config.json settings.
-# 1. Reads video_url and video_file from configs/zone_config.json
+# 1. Reads video_url and video_file from the selected use case's zone_config.json
 # 2. Downloads the raw video
 # 3. Converts to AVC H.264 at specified resolution/fps using format_avc_mp4.sh
 # 4. Places the result in scenescape/sample_data/
@@ -13,7 +13,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
 SAMPLE_DATA_DIR="${PROJECT_ROOT}/../scenescape/sample_data"
-ZONE_CONFIG="${PROJECT_ROOT}/configs/zone_config.json"
+USE_CASE="${USE_CASE:-retail}"
+ZONE_CONFIG="${ZONE_CONFIG:-${PROJECT_ROOT}/configs/usecase/${USE_CASE}/zone_config.json}"
 FORMAT_SCRIPT="${PROJECT_ROOT}/../performance-tools/benchmark-scripts/format_avc_mp4.sh"
 SAMPLE_MEDIA_DIR="${PROJECT_ROOT}/../performance-tools/sample-media"
 
