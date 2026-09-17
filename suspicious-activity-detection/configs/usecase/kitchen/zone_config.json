@@ -1,6 +1,6 @@
 {
   "scene_name": "kitchen food safety",
-  "scene_zip": "storewide-loss-prevention.zip",
+  "scene_zip": "kitchen-food-safety.zip",
   "model_precision": "FP32",
   "scenescape_api": {
     "base_url": "https://web.scenescape.intel.com"
@@ -9,12 +9,11 @@
     {
       "name": "lp-camera1",
       "video": "lp-camera1.mp4",
-      "video_url": "https://www.pexels.com/download/video/37668440/",
+      "video_url": "file:///storewide-loss-prevention/scenescape/sample_data/kitchen/lp-camera1.mp4",
       "fps": 30
     }
   ],
   "zones": {
-    "kitchen-prep": "HIGH_VALUE",
-    "food-area": "CHECKOUT"
+    "kitchen-prep": "HIGH_VALUE"
   }
 }

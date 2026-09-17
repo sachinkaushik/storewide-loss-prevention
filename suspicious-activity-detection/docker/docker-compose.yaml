@@ -271,7 +271,7 @@ services:
 
 networks:
   storewide-lp:
-    name: storewide-lp_storewide-lp
+    name: storewide-lp
 
 volumes:
   seaweedfs-data:

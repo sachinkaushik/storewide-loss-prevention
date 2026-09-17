@@ -182,7 +182,7 @@ up:
 	@echo "=== SEARCH_ONLY=true → starting standalone search stack only (SceneScape + LP skipped) ==="
 	@$(MAKE) run-search
 else
-up: validate-device gen-zone-config
+up: validate-device download-sample-data
 	@ZONE_CONFIG="$(abspath $(USECASE_ZONE_CONFIG))" $(MAKE) -C $(SCENESCAPE_DIR) APP_DIR=$(CURDIR) RESOURCE_CONFIG=$(RESOURCE_CONFIG) init init-sample-data download-models init-volumes
 	@$(MAKE) patch-device
 	@mkdir -p $(RESULTS_PATH) $(RESULTS_PATH)/ba $(RESULTS_PATH)/swlp
@@ -271,7 +271,17 @@ ifeq ($(SEARCH_ONLY_LOWER),true)
 down:
 	@$(MAKE) down-search
 else
+.PHONY: cleanup-all-scenes
+cleanup-all-scenes:
+	@for zone_config in configs/usecase/*/zone_config.json; do \
+		if [ -f "$$zone_config" ]; then \
+			echo "Cleaning SceneScape scene from $$zone_config"; \
+			ZONE_CONFIG="$(CURDIR)/$$zone_config" $(MAKE) -C $(SCENESCAPE_DIR) APP_DIR=$(CURDIR) cleanup-scene || true; \
+		fi; \
+	done
+
 down:
+	@$(MAKE) cleanup-all-scenes || true
 	@BRIDGE=$$(docker ps -a --filter name=vss-recall-bridge --format '{{.Names}}' | head -n1); \
 	if [ -n "$$BRIDGE" ]; then \
 		docker network disconnect $(LP_NETWORK) "$$BRIDGE" 2>/dev/null || true; \
@@ -284,6 +294,7 @@ down:
 	@# Best-effort: also stop a standalone search stack (from `make up MODE=search`),
 	@# which the combined compose files above don't know about. No-op if none running.
 	@$(SEARCH_ENV) $(COMPOSE_SEARCH) --profile recall-ui --profile standalone-rtsp down --remove-orphans || true
+	@-docker volume rm storewide-lp_vol-db storewide-lp_vol-migrations 2>/dev/null || true
 	@-docker volume rm storewide-lp_seaweedfs-data 2>/dev/null || true
 endif
 
@@ -295,7 +306,9 @@ run-scenescape:
 
 .PHONY: down-scenescape
 down-scenescape:
+	@$(MAKE) cleanup-all-scenes
 	@$(MAKE) -C $(SCENESCAPE_DIR) APP_DIR=$(CURDIR) down
+	@-docker volume rm storewide-lp_vol-db storewide-lp_vol-migrations 2>/dev/null || true
 
 .PHONY: export-scene
 export-scene:

@@ -12,15 +12,14 @@ scenescape_api:
 
 scenes:
   - scene_name: kitchen food safety
-    scene_zip: storewide-loss-prevention.zip
+    scene_zip: kitchen-food-safety.zip
     sample_video_fps: 30
     cameras:
       - lp-camera1
     zones:
       kitchen-prep: HIGH_VALUE
-      food-area: CHECKOUT
     sample_video_urls:
-      lp-camera1: https://www.pexels.com/download/video/37668440/
+      lp-camera1: file:///storewide-loss-prevention/scenescape/sample_data/kitchen/lp-camera1.mp4
 
 mqtt:
   host: broker.scenescape.intel.com
