@@ -15,6 +15,9 @@ session_flags:
     field: status
     match_value: suspicious
 
+variables:
+  loiter_threshold_seconds: 5
+
 services:
   behavioral_analysis:
     handler: ba_orchestrator
@@ -53,3 +56,25 @@ rules:
             confidence: $ctx.ba_confidence
             description: $ctx.ba_message
             frames_analyzed: $ctx.ba_frames_analyzed
+
+
+  - id: loitering
+    name: Loitering in High-Value Zone
+    enabled: true
+    trigger:
+      event_type: zone_loiter
+      zone_type: HIGH_VALUE
+    conditions:
+      - field: dwell_seconds
+        op: gt
+        value: ${loiter_threshold_seconds:5}
+    actions:
+      - type: alert
+        params:
+          alert_type: LOITERING
+          severity: WARNING
+          fire_once_per: session
+          threshold: ${loiter_threshold_seconds:5}
+          details:
+            dwell_seconds: $ctx.dwell_seconds
+            threshold: $param.threshold          
