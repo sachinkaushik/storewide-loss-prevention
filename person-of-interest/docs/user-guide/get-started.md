@@ -14,7 +14,7 @@ environment meets the recommended hardware and software prerequisites.
 > directory before running the commands in this guide.
 
 ```bash
-git clone https://github.com/intel-retail/storewide-loss-prevention.git
+git clone -b <release-or-tag> --single-branch https://github.com/intel-retail/storewide-loss-prevention.git # e.g. 2026.1.0
 cd storewide-loss-prevention/person-of-interest
 ```
 
@@ -36,11 +36,15 @@ Before starting, ensure these files are in place:
 | `configs/res/*.env` | Device resource configs for DL Streamer pipeline (GPU, CPU, NPU profiles) |
 | `configs/pipeline-config.json` | DL Streamer pipeline template (rendered per camera by `init.sh`) |
 | `../scenescape/webserver/conference-room.zip` | Scene map + zone definitions imported into Scenescape |
-| `../scenescape/sample_data/Camera_01.mp4` | Sample video used by the camera replay |
+| `../scenescape/sample_data/Camera_01.mp4` | Sample video for camera 1 (classroom) — downloaded by `make download-sample-video` |
+| `../scenescape/sample_data/Camera_02.mp4` | Sample video for camera 2 (face demographics) — downloaded by `make download-sample-video` |
+| `sample_data/poi_1.png` | Reference image for benchmark POI enrollment |
+| `sample_data/poi_2.png` | Additional reference image for benchmark POI enrollment |
 
 > **Note:** The video file names must match the `video` entries in
 > `configs/zone_config.json` (for example, `Camera_01.mp4` corresponds to
-> camera `Camera_01`).
+> camera `Camera_01`). Run `make download-sample-video` to fetch both videos
+> automatically before starting the application.
 
 ### `zone_config.json` Reference
 
@@ -60,10 +64,10 @@ Minimal example:
   "models": "person-detection-retail-0013,face-detection-retail-0004,face-reidentification-retail-0095",
   "scenescape": {
     "registry": "",
-    "version": "2026.1.0",
+    "version": "2026.2.0",
     "controller_image": "intel/scenescape-controller",
     "manager_image": "intel/scenescape-manager",
-    "dlstreamer_version": "2026.2.0-ubuntu24-rc1"
+    "dlstreamer_version": "2026.2.0-ubuntu24"
   },
   "store": {
     "name": "Retail",
@@ -125,7 +129,7 @@ export HOST_IP=<IP>
 # Edit the configuration file with your camera and scene details
 nano configs/zone_config.json
 
-# Initialize environment with default device profile (CPU)
+# Initialize environment with default device profile (GPU)
 make init
 
 # Or select a specific device profile:
@@ -140,9 +144,9 @@ inference device, pre-process backend, model precision, and throughput options.
 
 | Profile | Decode | Detection | Re-ID | Precision | Command |
 |---------|--------|-----------|-------|-----------|---------|
-| `all-cpu.env` (default) | CPU (`avdec_h264`) | CPU | CPU | FP32 | `make init DEVICE=all-cpu.env` |
+| `all-cpu.env` | CPU (`avdec_h264`) | CPU | CPU | FP32 | `make init DEVICE=all-cpu.env` |
 | `all-gpu-cpu.env` | GPU (`vah264dec`) | GPU | CPU | FP16 | `make init DEVICE=all-gpu-cpu.env` |
-| `all-gpu.env` | GPU (`vah264dec`) | GPU | GPU | FP16 | `make init DEVICE=all-gpu.env` |
+| `all-gpu.env` (default) | GPU (`vah264dec`) | GPU | GPU | FP16 | `make init DEVICE=all-gpu.env` |
 | `all-npu-cpu.env` | GPU (`vah264dec`) | NPU | CPU | FP16-INT8 | `make init DEVICE=all-npu-cpu.env` |
 | `all-npu.env` | GPU (`vah264dec`) | NPU | NPU | FP16-INT8 | `make init DEVICE=all-npu.env` |
 
@@ -167,8 +171,8 @@ inference device, pre-process backend, model precision, and throughput options.
 ## 5. Pull or Build Images
 
 Pre-built container images are available on Docker Hub. The `docker-compose.yml`
-references them directly (`intel/poi-backend:2026.2.0-rc1` and
-`intel/poi-ui:2026.2.0-rc1`), so `make up` will pull them automatically if they
+references them directly (`intel/poi-backend:2026.2.0` and
+`intel/poi-ui:2026.2.0`), so `make up` will pull them automatically if they
 are not already present locally.
 
 To explicitly pull before starting:
@@ -202,7 +206,27 @@ This downloads `face-detection-retail-0004`, `face-reidentification-retail-0095`
 FP16, and FP16-INT8 precisions. It also exports `clip-reid-market1501` (body re-ID)
 in both FP32 and FP16.
 
-## 7. Launch the Application
+## 7. Download Sample Videos
+
+Download the sample videos used by the camera replay streams. This fetches two
+videos from the Intel IoT DevKit sample-videos repository and places them as
+`Camera_01.mp4` and `Camera_02.mp4` in `../scenescape/sample_data/`:
+
+```bash
+make download-sample-video
+```
+
+| Destination | Source Video |
+|-------------|-------------|
+| `scenescape/sample_data/Camera_01.mp4` | `classroom.mp4` |
+| `scenescape/sample_data/Camera_02.mp4` | `face-demographics-walking-and-pause.mp4` |
+
+> **Note:** Both videos are required before starting the application. The
+> FFmpeg replay containers (`lp-cams`, `lp-cams-2`) loop these files and
+> publish them as RTSP streams. If the files are missing, the camera
+> containers will fail to start.
+
+## 8. Launch the Application
 
 ```bash
 make up
@@ -247,25 +271,25 @@ This launches the following containers:
 | `poi-backend`        | `poi-backend`                | 8000  |
 | `poi-ui`             | `poi-ui`                     | 3000  |
 | `poi-redis`          | `redis:8.6.2`                | 6379  |
-| `poi-alert-service`  | `intel/alert-agent-service:2026.2.0-rc1`  | 8001  |
+| `poi-alert-service`  | `intel/alert-agent-service:2026.2.0`  | 8001  |
 
 > **Note:** Use `make up` for subsequent starts after the initial setup. Scenescape
 > is started automatically by the `up` target.
 
-## 8. View Logs
+## 9. View Logs
 
 ```bash
 make logs
 ```
 
-## 9. Stop Services
+## 10. Stop Services
 
 ```bash
 # Stop everything
 make down
 ```
 
-## 10. Access the Interface
+## 11. Access the Interface
 
 Once running:
 

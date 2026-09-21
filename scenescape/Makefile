@@ -43,7 +43,7 @@ init-sample-data:
 		echo "Sample data volume initialized."; \
 	else \
 		echo "WARNING: No video files (.ts/.mp4) in $(SAMPLE_DATA_DIR)/"; \
-		echo "Run make download-sample-data from the app directory before init-sample-data."; \
+		echo "Run make download-sample-data from the app directory, or place sample video files (.ts/.mp4) in $(SAMPLE_DATA_DIR)/ before init-sample-data."; \
 	fi
 
 # ---- Download Models ----

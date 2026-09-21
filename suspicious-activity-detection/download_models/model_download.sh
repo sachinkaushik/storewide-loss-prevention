@@ -13,6 +13,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "${SCRIPT_DIR}")"
 MODELS_DIR="${PROJECT_ROOT}/models"
 
+# Pin the HuggingFace cache to a project-local, writable directory so the VLM
+# export never depends on the invoking user's $HOME (which may be unwritable,
+# e.g. /home/fst in CI). Prevents PermissionError on ~/.cache/huggingface.
+# Honor an inherited HF_HOME only if it is actually writable; otherwise fall back.
+LOCAL_HF_HOME="${SCRIPT_DIR}/.hf_cache"
+_hf_writable() { mkdir -p "$1" 2>/dev/null && [ -w "$1" ]; }
+if [ -n "${HF_HOME:-}" ] && _hf_writable "${HF_HOME}"; then
+    echo "  Using inherited HF_HOME=${HF_HOME}"
+else
+    export HF_HOME="${LOCAL_HF_HOME}"
+fi
+mkdir -p "${HF_HOME}"
+
 ###############################################
 # CONFIGURATION — load AI-model settings from configs/.env.example
 # (single source of truth for VLM_*/TARGET_DEVICE/YOLO_*).
@@ -539,7 +552,10 @@ if not export_dir.exists() and not target_dir.exists():
     print(f"  Exporting to OpenVINO FP32 ...")
     orig = os.getcwd()
     os.chdir(str(models_dir))
-    YOLO(str(model_pt)).export(format="openvino", half=False)
+    # nms=True bakes end-to-end NMS into the model so its output is the
+    # post-NMS (1, 300, 57) tensor that behavioral-analysis' pose
+    # postprocessor expects; a plain export emits raw (1, 56, 8400).
+    YOLO(str(model_pt)).export(format="openvino", half=False, nms=True)
     os.chdir(orig)
     print(f"  ✓ FP32 export: {export_dir}")
 
