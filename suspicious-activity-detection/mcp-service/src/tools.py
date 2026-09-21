@@ -1,19 +1,21 @@
-"""Wires the ServiceServer: registers the event type, the read tools, and the
-gated act tools. Domain query logic lives in tools.py; this file is the wiring.
+"""Wires the ServiceServer: registers the event type and read tools.
+
+Runtime actions are intentionally not exposed; kitchen zone/rule setup is
+configuration under configs/usecase/kitchen/.
 """
 
 from __future__ import annotations
 
 from typing import Annotated
 
-from mcp_service_sdk import GateLevel, ServiceConfig, ServiceServer
+from mcp_service_sdk import ServiceConfig, ServiceServer
 from pydantic import Field
 
 import queries
 from config import get_settings
 from events import EVENT_TYPE, SCHEMA
 from events import ingest_alert as _ingest_alert
-from models import Activity
+from models import Activity, TrendCount
 
 _settings = get_settings()
 
@@ -23,6 +25,9 @@ svc = ServiceServer.from_config(
         store_id=_settings.store_id,
         log_backend=_settings.log_backend,
         log_path=_settings.log_path,
+        delivery=_settings.delivery,
+        webhook_url=_settings.webhook_url,
+        expose_subscribe=_settings.expose_subscribe,
     )
 )
 svc.register_event_type(EVENT_TYPE, schema=SCHEMA)
@@ -36,9 +41,28 @@ def ingest_alert(
     object_id: str,
     description: str,
     ref_id: str | None = None,
+    event_name: str = "report_suspicious_activity",
+    use_case: str = "retail",
+    frame: str = "",
+    station: str = "",
+    shift: str = "unknown",
 ) -> None:
     """Pipeline hand-off: the SAD MQTT consumer calls this to publish a violation."""
-    _ingest_alert(svc, zone, pose, severity, camera_id, object_id, description, ref_id)
+    _ingest_alert(
+        svc,
+        zone,
+        pose,
+        severity,
+        camera_id,
+        object_id,
+        description,
+        ref_id,
+        event_name,
+        use_case,
+        frame,
+        station,
+        shift,
+    )
 
 
 # -- read tools -----------------------------------------------------------
@@ -71,27 +95,68 @@ def Get_activity_by_zone_timestamp(
     return queries.activity_by_zone_timestamp(svc.log, zone, start_ms, end_ms)
 
 
+@svc.read_tool("Search_retrospective_frames")
+def Search_retrospective_frames(
+    query: Annotated[
+        str | None,
+        Field(description="Optional text filter, e.g. 'floor food area'."),
+    ] = None,
+    start_ms: Annotated[
+        int | None, Field(description="Inclusive lower bound, epoch milliseconds.")
+    ] = None,
+    end_ms: Annotated[
+        int | None, Field(description="Inclusive upper bound, epoch milliseconds.")
+    ] = None,
+    zone: Annotated[
+        str | None, Field(description="Optional zone filter, e.g. 'kitchen-prep'.")
+    ] = None,
+    event_name: Annotated[
+        str | None,
+        Field(description="Optional event filter, e.g. 'food_safety_violation'."),
+    ] = None,
+    use_case: Annotated[
+        str | None, Field(description="Optional use case filter: retail or kitchen.")
+    ] = None,
+) -> list[Activity]:
+    """Search SAD history, including SeaweedFS frame references, for retrospective review."""
+    return queries.retrospective_frame_search(
+        svc.log,
+        query=query,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        zone=zone,
+        event_name=event_name,
+        use_case=use_case,
+    )
+
+
+@svc.read_tool("Get_trend_counts")
+def Get_trend_counts(
+    start_ms: Annotated[
+        int | None, Field(description="Inclusive lower bound, epoch milliseconds.")
+    ] = None,
+    end_ms: Annotated[
+        int | None, Field(description="Inclusive upper bound, epoch milliseconds.")
+    ] = None,
+    event_name: Annotated[
+        str | None,
+        Field(description="Optional event filter, e.g. 'food_safety_violation'."),
+    ] = None,
+    use_case: Annotated[
+        str | None, Field(description="Optional use case filter: retail or kitchen.")
+    ] = None,
+) -> list[TrendCount]:
+    """Count matching SAD events by station and shift."""
+    return queries.trend_counts(
+        svc.log,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        event_name=event_name,
+        use_case=use_case,
+    )
+
+
 @svc.read_tool("Get_all_zones")
 def Get_all_zones() -> list[str]:
     """List the distinct zones that have recorded any activity."""
     return queries.all_zones(svc.log)
-
-
-# -- act tools (narrow, gated) --------------------------------------------
-@svc.act_tool("notify_operator", level=GateLevel.AUTOMATIC, max_calls=10, per_seconds=60.0)
-def notify_operator(
-    zone: Annotated[str, Field(description="Zone the event occurred in.")],
-    message: Annotated[str, Field(description="Operator-facing message.")],
-) -> dict:
-    """Surface a suspicious-activity / food-safety event to the store operator."""
-    return {"notified": "operator", "zone": zone, "message": message}
-
-
-@svc.act_tool("open_case", level=GateLevel.NEEDS_APPROVAL)
-def open_case(
-    zone: Annotated[str, Field(description="Zone the case concerns.")],
-    object_id: Annotated[str, Field(description="SceneScape cross-camera person id.")],
-    severity: Annotated[str, Field(description="low | medium | high.")],
-) -> dict:
-    """Open a loss-prevention investigation case. Requires human approval."""
-    return {"case_opened": True, "zone": zone, "object_id": object_id, "severity": severity}

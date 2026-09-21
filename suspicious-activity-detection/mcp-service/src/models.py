@@ -10,9 +10,22 @@ class Activity(TypedDict):
 
     ref_id: str
     ts_ms: int
+    event_name: str
+    use_case: str
     zone: str
     pose: str
     severity: str
     camera_id: str
     object_id: str
     description: str
+    frame: str
+    station: str
+    shift: str
+
+
+class TrendCount(TypedDict):
+    """Count of matching events for one station/shift bucket."""
+
+    station: str
+    shift: str
+    count: int

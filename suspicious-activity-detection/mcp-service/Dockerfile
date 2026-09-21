@@ -31,12 +31,13 @@ ENV MCP_TRANSPORT=streamable-http \
     MCP_PORT=9000 \
     STORE_ID=store_001 \
     SAD_LOG_PATH=/data/sad_log.sqlite \
-    SEED_DEMO=true \
+    SAD_EXPOSE_SUBSCRIBE=false \
+    SEED_DEMO=false \
     PYTHONUNBUFFERED=1
 
 RUN mkdir -p /data
 VOLUME ["/data"]
 EXPOSE 9000
 
-# Seed demo data (idempotent) when SEED_DEMO=true, then run the MCP server.
+# Optional local demo seeding when SEED_DEMO=true, then run the MCP server.
 CMD ["sh", "-c", "if [ \"$SEED_DEMO\" = \"true\" ]; then python /app/scripts/seed_demo.py || true; fi; exec sad-mcp"]

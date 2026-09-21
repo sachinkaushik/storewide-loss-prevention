@@ -19,6 +19,9 @@ class Settings:
     port: int
     log_backend: str  # sqlite | jsonl | memory
     log_path: str
+    delivery: str  # off | webhook
+    webhook_url: str | None
+    expose_subscribe: bool
 
 
 def get_settings() -> Settings:
@@ -33,4 +36,7 @@ def get_settings() -> Settings:
         port=int(os.getenv("MCP_PORT", "9000")),
         log_backend=log_backend,
         log_path=log_path,
+        delivery=os.getenv("SAD_DELIVERY", "off"),
+        webhook_url=os.getenv("SAD_WEBHOOK_URL"),
+        expose_subscribe=os.getenv("SAD_EXPOSE_SUBSCRIBE", "false").lower() == "true",
     )

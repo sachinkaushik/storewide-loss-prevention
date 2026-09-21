@@ -16,7 +16,19 @@ def _seed(log: SQLiteLog) -> None:
             event_type=events.EVENT_TYPE,
             service="suspicious_activity",
             store_id="store_001",
-            payload={"zone": zone, "severity": "high"},
+            payload={
+                "event_name": "food_safety_violation" if zone == "kitchen-prep" else "loitering",
+                "use_case": "kitchen" if zone == "kitchen-prep" else "retail",
+                "zone": zone,
+                "pose": "floor_to_food_area" if zone == "kitchen-prep" else "loiter",
+                "severity": "high",
+                "camera_id": "lp-camera1",
+                "object_id": ref,
+                "description": "item picked from floor and placed back in the food area",
+                "frame": f"s3://behavioral-frames/{ref}.jpg",
+                "station": "prep" if zone == "kitchen-prep" else "checkout",
+                "shift": "lunch",
+            },
             ref_id=ref,
             ts_ms=ts,
         )
@@ -51,3 +63,25 @@ def test_all_zones():
     log = SQLiteLog(service="t")
     _seed(log)
     assert queries.all_zones(log) == ["checkout-2", "kitchen-prep"]
+
+
+def test_retrospective_frame_search():
+    log = SQLiteLog(service="t")
+    _seed(log)
+    results = queries.retrospective_frame_search(
+        log,
+        query="floor",
+        use_case="kitchen",
+        event_name="food_safety_violation",
+        start_ms=50,
+        end_ms=250,
+    )
+    assert [r["ref_id"] for r in results] == ["a", "b"]
+
+
+def test_trend_counts():
+    log = SQLiteLog(service="t")
+    _seed(log)
+    assert queries.trend_counts(log, use_case="kitchen") == [
+        {"station": "prep", "shift": "lunch", "count": 2}
+    ]

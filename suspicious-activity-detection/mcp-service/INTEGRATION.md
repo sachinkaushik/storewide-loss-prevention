@@ -15,13 +15,20 @@ events fan out from the SAD pipeline to the agent.
 
 The SAD pipeline (YOLO-pose + VLM behavioral analysis) detects suspicious or
 unsafe activity in camera zones. This MCP service makes those detections available
-to the agent through the **uniform Service Contract**: the agent reads history and
-acts, and it cannot tell this service apart from any other (real or simulated).
+to the agent through the **uniform Service Contract**: the agent describes the
+service and reads durable history. Runtime actions are intentionally not exposed;
+zone and rule setup is configuration.
+
+The service supports both current SAD scenarios:
+
+- **Retail:** existing suspicious-activity events such as loitering and concealment.
+- **Kitchen:** food-safety events from the `kitchen-prep` SceneScape zone, pose
+  trigger `floor_to_food_area`, and VLM confirmation that an item was picked from
+  the floor and placed back in the food area.
 
 The service writes **only domain code** — its event schema, query helpers, and
-tool declarations. Everything else (durable log, event delivery/fan-out, policy
-gate, telemetry, MCP scaffolding) is inherited from `mcp-service-sdk`.
-gate, telemetry, MCP scaffolding) is inherited from `mcp-service-sdk`.
+tool declarations. Everything else (durable log, event delivery/fan-out,
+telemetry, MCP scaffolding) is inherited from `mcp-service-sdk`.
 
 ---
 
@@ -47,16 +54,16 @@ flowchart TB
         DEL["Delivery (fan-out)"]
         POL["PolicyGate"]
         TEL["Telemetry"]
-        MCP["MCP scaffolding<br/>describe/subscribe/read/act"]
+        MCP["MCP scaffolding<br/>describe + read tools"]
     end
     AGENT["Central QSR Agent<br/>(Hermes — MCP client)"]
 
-    TOOLS -->|register read and act tools| SS
+    TOOLS -->|register read tools| SS
     TOOLS --> QUERIES --> LOG
     EVENTS -->|svc.emit| SS
     MAIN -->|svc.run| SS
     SS --- LOG & DEL & POL & TEL & MCP
-    MCP <-->|describe, subscribe, read| AGENT
+    MCP <-->|describe, read| AGENT
     POL -->|gated act| AGENT
 ```
 
@@ -77,7 +84,7 @@ The `[mcp]` extra pulls in the official MCP SDK. Pin this to a tag or commit in
 
 | File | Responsibility |
 |---|---|
-| `src/tools.py` | **The MCP tools** — creates `svc = ServiceServer(...)`, declares read/act tools, and `ingest_alert`. Edit this to add/change tools. |
+| `src/tools.py` | **The MCP tools** — creates `svc = ServiceServer(...)`, declares read tools, disables subscribe by default, and exposes `ingest_alert`. Edit this to add/change tools. |
 | `src/queries.py` | Internal pure query logic over the durable log. Not exposed to the agent. |
 | `src/events.py` | Event type name + payload schema + `ingest_alert` (the pipeline hand-off seam). |
 | `src/models.py` | `Activity` `TypedDict` — structured output type. |
@@ -90,14 +97,15 @@ The `[mcp]` extra pulls in the official MCP SDK. Pin this to a tag or commit in
 
 ## 4. The Service Contract (what the agent sees)
 
-Every service on `mcp-service-sdk` exposes the same four MCP capabilities:
+This service exposes describe + read tools. Subscribe/callback and runtime act
+tools are disabled for the food-safety sensor contract.
 
 | Capability | This service |
 |---|---|
-| **describe** | Advertises the `sad_violation` event schema + all read/act tools with descriptions. |
-| **subscribe** | Agent registers interest (event + condition + callback). |
-| **read tools** | `Get_all_activities`, `Get_activity_by_zone`, `Get_activity_by_zone_timestamp`, `Get_all_zones`. |
-| **act tools** | `notify_operator` (auto), `open_case` (human approval). |
+| **describe** | Advertises the `report_suspicious_activity` event schema + all read tools with descriptions. |
+| **read tools** | `Get_all_activities`, `Get_activity_by_zone`, `Get_activity_by_zone_timestamp`, `Search_retrospective_frames`, `Get_trend_counts`, `Get_all_zones`. |
+| **subscribe** | Disabled by default (`SAD_EXPOSE_SUBSCRIBE=false`). |
+| **act tools** | None at runtime. Kitchen zone/rule setup is configuration under `configs/usecase/kitchen/`. |
 
 ### Read tools
 
@@ -106,19 +114,24 @@ Every service on `mcp-service-sdk` exposes the same four MCP capabilities:
 | `Get_all_activities` | — | `list[Activity]` — every recorded activity |
 | `Get_activity_by_zone` | `zone` | activities in that zone |
 | `Get_activity_by_zone_timestamp` | `zone`, `start_ms?`, `end_ms?` | zone activities in an epoch-ms range |
+| `Search_retrospective_frames` | `query?`, `start_ms?`, `end_ms?`, `zone?`, `event_name?`, `use_case?` | matching events with SeaweedFS frame references |
+| `Get_trend_counts` | `start_ms?`, `end_ms?`, `event_name?`, `use_case?` | counts grouped by station and shift |
 | `Get_all_zones` | — | distinct zones with activity |
 
 Descriptions come from the function **docstrings**; parameter docs from
 `Annotated[..., Field(description=...)]` — the standard MCP convention.
 
-### Act tools (gated by the Policy Gate)
+### Runtime actions
 
-| Tool | Gate | Guardrail |
-|---|---|---|
-| `notify_operator(zone, message)` | **automatic** | rate-limited 10/min |
-| `open_case(zone, object_id, severity)` | **needs approval** | high-severity cases are human-in-the-loop |
+No runtime action tools are exposed. For kitchen food-safety, aiming the zone,
+setting the pose trigger, and enabling VLM confirmation are controlled by these
+configuration files:
 
-An action off the allow-list (e.g. `lock_register`) is **blocked** and logged.
+| File | Kitchen setting |
+|---|---|
+| `configs/usecase/kitchen/scene-config.yaml` | Scene `kitchen food safety`, zone `kitchen-prep: HIGH_VALUE`. |
+| `configs/usecase/kitchen/patterns.yaml` | Pose pattern `floor_to_food_area` with VLM confirmation prompt. |
+| `configs/usecase/kitchen/rules.yaml` | Emits `FOOD_SAFETY_VIOLATION` when BA/VLM status is suspicious. |
 
 ### The `Activity` shape
 
@@ -126,13 +139,23 @@ An action off the allow-list (e.g. `lock_register`) is **blocked** and logged.
 class Activity(TypedDict):
     ref_id: str        # source event id (MQTT message id) — idempotent
     ts_ms: int         # epoch milliseconds
+  event_name: str    # food_safety_violation, loitering, concealment, ...
+  use_case: str      # retail | kitchen
     zone: str
     pose: str          # reach-over, item-conceal, slip, ...
     severity: str      # low | medium | high
     camera_id: str
     object_id: str     # SceneScape cross-camera person id
     description: str    # VLM one-line summary
+  frame: str          # SeaweedFS frame/object reference
+  station: str        # prep, checkout, etc.
+  shift: str          # breakfast, lunch, dinner, overnight, unknown
 ```
+
+Kitchen food-safety events use the generic event type
+`report_suspicious_activity` with payload `event_name="food_safety_violation"`,
+`zone="kitchen-prep"`, and `description`/`frame` pointing to the VLM-confirmed
+evidence.
 
 ---
 
@@ -152,7 +175,7 @@ sequenceDiagram
     participant A as Agent inbox
 
     P->>I: violation (zone, pose, severity, ... , ref_id=mqtt_msg_id)
-    I->>SS: emit("sad_violation", payload, ref_id)
+    I->>SS: emit("report_suspicious_activity", payload, ref_id)
     SS->>LOG: append (idempotent on ref_id)
     Note over LOG: written FIRST — nothing lost, replayable
     SS->>DEL: dispatch(event)
@@ -180,12 +203,17 @@ from tools import ingest_alert   # from src/tools.py
 
 ingest_alert(
     zone="kitchen-prep",
-    pose="item-drop-return",
-    severity="high",
-    camera_id="cam-3",
+    pose="floor_to_food_area",
+    severity="critical",
+    camera_id="lp-camera1",
     object_id="p-1001",
-    description="Object dropped on floor and returned to prep area",
+    description="Item picked from floor and placed back in the food area",
     ref_id=mqtt_message_id,     # -> idempotent replay
+    event_name="food_safety_violation",
+    use_case="kitchen",
+    frame="s3://behavioral-frames/.../frame.jpg",
+    station="prep",
+    shift="lunch",
 )
 ```
 
@@ -204,17 +232,12 @@ sequenceDiagram
     participant Q as queries.py + log
 
     A->>MCP: describe (on connect)
-    A->>MCP: subscribe sad_violation
-    A->>MCP: read Get_activity_by_zone("kitchen-prep")
+    A->>MCP: read Search_retrospective_frames("floor food area", time window)
     MCP->>Q: query durable log
     Q-->>A: list[Activity]
-    A->>PG: act notify_operator(zone, message)
-    alt allowed (automatic)
-        PG->>MCP: execute
-        MCP-->>A: result
-    else needs approval / blocked
-        PG-->>A: hold / refuse (logged)
-    end
+    A->>MCP: read Get_trend_counts(use_case="kitchen")
+    MCP->>Q: aggregate station/shift buckets
+    Q-->>A: trend counts
 ```
 
 The agent connects as a standard MCP client. Because the contract is uniform,
@@ -230,18 +253,17 @@ by the Makefile and started/stopped with the main stack.
 
 | Command | Effect |
 |---|---|
-| `make up` | Brings up the LP/SceneScape stack **and** starts the SAD MCP host process. |
-| `make down` | Stops the stack **and** the MCP host process. |
-| `make mcp-up` | Start just the MCP service (creates venv, `pip install -e`, launches). |
-| `make mcp-down` | Stop just the MCP service. |
+| `make up USE_CASE=retail` | Brings up the retail SAD stack and the SAD MCP service. |
+| `make up USE_CASE=kitchen` | Brings up the kitchen food-safety stack and the SAD MCP service. |
+| `make down` | Stops the stack and the MCP service container. |
 
 Details:
 
 - **Transport:** `streamable-http` in deployment (so the agent can reach it over
   the network); `stdio` locally for CLI use.
 - **Endpoint:** `http://localhost:9000/mcp` (override port with `MCP_PORT`).
-- **Process:** `nohup` host process; PID in `/tmp/sad-mcp.pid`, logs in `/tmp/sad-mcp.log`.
-- **Venv:** `mcp-service/.venv` (auto-created on first `make up`).
+- **Container:** compose service `sad-mcp-service`, image `intel/sad-mcp:${TAG}`.
+- **Log volume:** Docker volume `sad-mcp-data` at `/data/sad_log.sqlite`.
 
 > **Networking note:** the agent reaches this at `http://<host>:9000/mcp`. If Hermes
 > runs inside the compose network, use the host address (e.g. `host.docker.internal:9000`)
@@ -257,6 +279,10 @@ Details:
 | `MCP_TRANSPORT` | `stdio` | `stdio` \| `sse` \| `streamable-http`. Makefile sets `streamable-http`. |
 | `MCP_HOST` | `0.0.0.0` | Bind host for HTTP transports. |
 | `MCP_PORT` | `9000` | Bind port for HTTP transports. |
+| `SAD_EXPOSE_SUBSCRIBE` | `false` | Keep callback subscription disabled for the read-only sensor contract. |
+| `SAD_DELIVERY` | `off` | `off` or `webhook`; when `webhook`, events are pushed after durable-log append. |
+| `SAD_WEBHOOK_URL` | — | Hub/webhook endpoint used when `SAD_DELIVERY=webhook`. |
+| `SEED_DEMO` | `false` | Optional local demo history seeding; production/default startup uses real events only. |
 
 ---
 
@@ -275,6 +301,13 @@ python3 -m venv .venv
 .venv/bin/python scripts/demo_e2e.py
 ```
 
+For a no-install local smoke against the checked-out SDK source:
+
+```bash
+PYTHONPATH=src:/home/intel/sachin/oep/edge-ai-libraries/libraries/mcp-service-sdk/src \
+  python scripts/demo_e2e.py
+```
+
 ---
 
 ## 10. Versioning
@@ -290,7 +323,7 @@ python3 -m venv .venv
 - The SAD service is a **thin instance** of the generic `mcp-service-sdk` contract.
 - It writes only its **schema + query helpers + tool declarations**; the base
   provides the log, fan-out, policy gate, telemetry, and MCP scaffolding.
-- Events flow **pipeline → `ingest_alert` → emit → durable log (first) → fan-out → agent**,
+- Events flow **pipeline → `ingest_alert` → emit → durable log (first) → optional fan-out → agent**,
   idempotent on `ref_id` and fully replayable.
-- The agent connects over MCP and discovers everything via `describe` — no agent
-  changes needed to onboard this service.
+- The agent connects over MCP and discovers describe/read tools via `describe` —
+  no agent changes needed to onboard this service.
