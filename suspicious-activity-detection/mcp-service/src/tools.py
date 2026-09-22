@@ -12,7 +12,7 @@ from mcp_service_sdk import ServiceConfig, ServiceServer
 from pydantic import Field
 
 import queries
-from config import get_settings
+from config import configured_zones, get_settings
 from events import EVENT_TYPE, SCHEMA
 from events import ingest_alert as _ingest_alert
 from models import Activity, TrendCount
@@ -158,5 +158,8 @@ def Get_trend_counts(
 
 @svc.read_tool("Get_all_zones")
 def Get_all_zones() -> list[str]:
-    """List the distinct zones that have recorded any activity."""
+    """List configured zones for the current use case."""
+    zones = configured_zones(_settings.zone_config_path)
+    if zones:
+        return zones
     return queries.all_zones(svc.log)

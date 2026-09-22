@@ -9,6 +9,7 @@ description = "Suspicious Activity Detection MCP service for the Central QSR Age
 requires-python = ">=3.11"
 dependencies = [
     "mcp-service-sdk[mcp] @ git+https://github.com/sachinkaushik/edge-ai-libraries.git@mcp#subdirectory=libraries/mcp-service-sdk",
+    "paho-mqtt>=1.6,<3",
 ]
 
 [project.scripts]
@@ -16,7 +17,7 @@ sad-mcp = "main:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["config", "events", "models", "queries", "tools", "main"]
+py-modules = ["config", "events", "models", "queries", "tools", "main", "mqtt_ingest"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

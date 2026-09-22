@@ -10,7 +10,7 @@ subscriptions:
       fields:
         - metadata.person_id
         - metadata.zone_id
-      window_seconds: 55
+      window_seconds: 15
       on_missing: skip
       hash:
         algorithm: sha1
@@ -27,7 +27,7 @@ subscriptions:
       fields:
         - metadata.person_id
         - metadata.zone_id
-      window_seconds: 55
+      window_seconds: 15
       on_missing: skip
       hash:
         algorithm: sha1

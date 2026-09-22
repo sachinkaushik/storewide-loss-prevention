@@ -52,10 +52,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       SEAWEEDFS_ENDPOINT: ${SEAWEEDFS_ENDPOINT:-http://seaweedfs:8333}
       SEAWEEDFS_BUCKET: ${SEAWEEDFS_BUCKET:-behavioral-frames}
-      MIN_FRAMES_FOR_DETECTION: ${BA_MIN_FRAMES:-3}
+      MIN_FRAMES_FOR_DETECTION: ${BA_MIN_FRAMES:-6}
       MAX_FRAMES_TO_FETCH: ${BA_MAX_FRAMES:-120}
-      POSE_FRAMES_COUNT: ${BA_POSE_FRAMES:-60}
-      POSE_CONFIDENCE_THRESHOLD: ${BA_CONFIDENCE:-0.5}
+      POSE_FRAMES_COUNT: ${BA_POSE_FRAMES:-15}
+      POSE_CONFIDENCE_THRESHOLD: ${BA_CONFIDENCE:-0.3}
       YOLO_POSE_MODEL: /models/yolo_models/yolo26n-pose/yolo26n-pose.xml
       GST_INFERENCE_DEVICE: ${BA_GST_DEVICE:-CPU}
       VLM_ENDPOINT: ${VLM_ENDPOINT:-http://ovms-vlm:8001}
@@ -234,6 +234,11 @@ services:
       SAD_DELIVERY: ${SAD_DELIVERY:-off}
       SAD_WEBHOOK_URL: ${SAD_WEBHOOK_URL:-}
       SAD_EXPOSE_SUBSCRIBE: "false"
+      SAD_ZONE_CONFIG_PATH: /app/zone_config.json
+      SAD_MQTT_INGEST_ENABLED: ${SAD_MQTT_INGEST_ENABLED:-true}
+      SAD_MQTT_HOST: ${MQTT_HOST:-broker.scenescape.intel.com}
+      SAD_MQTT_PORT: ${MQTT_PORT:-1883}
+      SAD_MQTT_ALERT_TOPIC: ${MQTT_ALERT_TOPIC:-alerts/#}
       SEED_DEMO: ${SEED_DEMO:-false}
       USE_CASE: ${USE_CASE:-retail}
       SEAWEEDFS_ENDPOINT: ${SEAWEEDFS_ENDPOINT:-http://seaweedfs:8333}
@@ -241,6 +246,7 @@ services:
       no_proxy: ${no_proxy:-${NO_PROXY:-}},seaweedfs,alert-service,localhost,127.0.0.1,172.18.0.0/16,10.0.0.0/8
     volumes:
       - sad-mcp-data:/data
+      - ./configs/usecase/${USE_CASE:-retail}/zone_config.json:/app/zone_config.json:ro
     restart: unless-stopped
 
   # ---------- SeaweedFS (S3-compatible Object Storage) ----------

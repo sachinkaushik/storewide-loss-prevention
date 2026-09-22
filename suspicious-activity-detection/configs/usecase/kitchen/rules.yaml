@@ -6,7 +6,7 @@
 settings:
   session_timeout_seconds: 90
   frame_capture_count: 15
-  frame_capture_interval_seconds: 1.0
+  frame_capture_interval_seconds: 0.3
 
 session_flags:
   food_safety_suspected:
@@ -16,7 +16,7 @@ session_flags:
     match_value: suspicious
 
 variables:
-  loiter_threshold_seconds: 5
+  loiter_threshold_seconds: 30
 
 services:
   behavioral_analysis:

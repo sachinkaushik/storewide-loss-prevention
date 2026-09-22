@@ -6,12 +6,40 @@ merged with the payload fields.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from events import EVENT_TYPE
 from models import Activity, TrendCount
 
 _MAX = 10_000
+
+_STOPWORDS = {
+    "all",
+    "and",
+    "any",
+    "anything",
+    "are",
+    "for",
+    "found",
+    "how",
+    "into",
+    "often",
+    "put",
+    "record",
+    "records",
+    "related",
+    "show",
+    "station",
+    "stations",
+    "the",
+    "which",
+    "with",
+}
+
+_FOOD_SAFETY_ALIASES = (
+    "food safety violation dropped drop floor item items food area put back returned return prep kitchen"
+)
 
 
 def _to_activity(event: Any) -> Activity:
@@ -32,14 +60,33 @@ def _matches_text(activity: Activity, query: str | None) -> bool:
     if not query:
         return True
     needle = query.lower()
+    text = _activity_search_text(activity)
+    if needle in text:
+        return True
+
+    tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", needle)
+        if len(token) > 2 and token not in _STOPWORDS
+    ]
+    if not tokens:
+        return True
+    return all(token in text for token in tokens)
+
+
+def _activity_search_text(activity: Activity) -> str:
     fields = (
         activity.get("event_name", ""),
+        activity.get("use_case", ""),
         activity.get("zone", ""),
         activity.get("pose", ""),
         activity.get("description", ""),
         activity.get("frame", ""),
     )
-    return any(needle in str(field).lower() for field in fields)
+    text = " ".join(str(field).lower() for field in fields)
+    if activity.get("event_name") == "food_safety_violation":
+        text = f"{text} {_FOOD_SAFETY_ALIASES}"
+    return text
 
 
 def all_activities(log: Any, limit: int = _MAX) -> list[Activity]:

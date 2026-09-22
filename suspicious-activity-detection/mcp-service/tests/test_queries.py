@@ -79,6 +79,18 @@ def test_retrospective_frame_search():
     assert [r["ref_id"] for r in results] == ["a", "b"]
 
 
+def test_retrospective_frame_search_matches_food_safety_intent():
+    log = SQLiteLog(service="t")
+    _seed(log)
+    results = queries.retrospective_frame_search(
+        log,
+        query="dropped on the floor and put back in the food area",
+        use_case="kitchen",
+        event_name="food_safety_violation",
+    )
+    assert [r["ref_id"] for r in results] == ["a", "b"]
+
+
 def test_trend_counts():
     log = SQLiteLog(service="t")
     _seed(log)
