@@ -197,7 +197,7 @@ up: validate-device download-sample-data
 		DOCKER_REGISTRY=$(REGISTRY_URL) $(COMPOSE_ALL) pull; \
 	else \
 		echo "Building LP images..."; \
-		BUILD_SERVICES="scene-understanding-service behavioral-analysis"; \
+		BUILD_SERVICES="scene-understanding-service behavioral-analysis sad-mcp-service"; \
 		if [ "$(ENABLE_UI_LOWER)" = "true" ]; then \
 			BUILD_SERVICES="$$BUILD_SERVICES swlp-suspicious-ui"; \
 		fi; \
