@@ -16,7 +16,7 @@ SCHEMA: dict[str, str] = {
     "use_case": "str",         # retail | kitchen
     "zone": "str",
     "pose": "str",            # e.g. reach-over, item-conceal, slip
-    "severity": "str",        # low | medium | high
+    "severity": "str",        # low | medium | high | critical
     "camera_id": "str",
     "object_id": "str",       # SceneScape cross-camera person id
     "description": "str",     # VLM one-line summary
@@ -40,8 +40,8 @@ def ingest_alert(
     frame: str = "",
     station: str = "",
     shift: str = "unknown",
-) -> None:
-    svc.emit(
+) -> Any:
+    return svc.emit(
         EVENT_TYPE,
         {
             "event_name": event_name,
